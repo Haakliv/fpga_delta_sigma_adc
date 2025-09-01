@@ -2,6 +2,9 @@ library ieee;
   use ieee.std_logic_1164.all;
   use ieee.numeric_std.all;
 
+library work;
+  use work.clk_rst_pkg.all;
+
 entity cic_sinc3_decimator is
   generic (
     DECIMATION   : positive := 64; -- decimation factor R
@@ -9,7 +12,7 @@ entity cic_sinc3_decimator is
   );
   port (
     clk      : in  std_logic;
-    reset    : in  std_logic;
+    reset    : in  rst_t;
     data_in  : in  std_logic; -- 1-bit delta-sigma stream
     data_out : out std_logic_vector(OUTPUT_WIDTH - 1 downto 0);
     valid    : out std_logic  -- high one cycle per output
@@ -108,7 +111,7 @@ begin
     variable stg3 : acc_t;
   begin
     if rising_edge(clk) then
-      if reset = '1' then
+      if reset = RST_ACTIVE then
         int1 <= (others => '0');
         int2 <= (others => '0');
         int3 <= (others => '0');
@@ -128,7 +131,7 @@ begin
   process (clk)
   begin
     if rising_edge(clk) then
-      if reset = '1' then
+      if reset = RST_ACTIVE then
         dec_cnt <= 0;
         dec_pulse <= '0';
       else
@@ -149,7 +152,7 @@ begin
     variable comb1, comb2, comb3 : acc_t;
   begin
     if rising_edge(clk) then
-      if reset = '1' then
+      if reset = RST_ACTIVE then
         comb1_d <= (others => '0');
         comb2_d <= (others => '0');
         comb3_d <= (others => '0');
