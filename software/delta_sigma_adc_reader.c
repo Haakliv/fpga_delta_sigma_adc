@@ -1,0 +1,95 @@
+/*
+ * Delta-Sigma ADC Reader for NIOS-V
+ * Reads ADC data via Avalon-MM and sends to UART with heartbeat
+ */
+
+#include <stdio.h>
+#include <unistd.h>
+#include <stdint.h>
+#include <time.h>
+#include "system.h"
+#include "io.h"
+#include "alt_types.h"
+
+// ADC register offsets (simplified - read-only)
+#define ADC_DATA_REG      0x00    // ADC data register
+#define ADC_STATUS_REG    0x04    // Status register  
+
+// Status register bits
+#define ADC_DATA_READY    0x01    // Data ready flag
+#define ADC_VALID         0x02    // ADC valid flag
+
+// ADC base address (to be defined in system.h by Qsys)
+// #define ADC_AVALON_BASE   0x???
+
+// Heartbeat timing (in microseconds)
+#define HEARTBEAT_INTERVAL_US   1000000    // 1 second
+
+void adc_init(void) {
+    // No initialization needed - read-only interface
+    printf("Delta-Sigma ADC Reader Started\n");
+    printf("==============================\n");
+    printf("ADC initialized (read-only mode)\n");
+}
+
+uint16_t adc_read_data(void) {
+    uint32_t data = IORD_32DIRECT(ADC_AVALON_BASE, ADC_DATA_REG);
+    return (uint16_t)(data & 0xFFFF);
+}
+
+uint32_t adc_read_status(void) {
+    return IORD_32DIRECT(ADC_AVALON_BASE, ADC_STATUS_REG);
+}
+
+void send_heartbeat(void) {
+    static uint32_t heartbeat_count = 0;
+    printf("Active (heartbeat #%lu)\n", heartbeat_count++);
+}
+
+int main(void) {
+    uint16_t adc_value;
+    uint32_t status;
+    uint32_t sample_count = 0;
+    
+    // Timing variables for heartbeat
+    clock_t last_heartbeat = clock();
+    clock_t current_time;
+    
+    // Initialize ADC
+    adc_init();
+    
+    printf("Starting main loop...\n");
+    printf("- ADC samples will be displayed when available\n");
+    printf("- Heartbeat message every %d seconds\n", HEARTBEAT_INTERVAL_US / 1000000);
+    printf("- Press Ctrl+C to stop\n\n");
+    
+    while (1) {
+        current_time = clock();
+        
+        // Check for heartbeat timing (approximately every second)
+        if (((current_time - last_heartbeat) * 1000000 / CLOCKS_PER_SEC) >= HEARTBEAT_INTERVAL_US) {
+            send_heartbeat();
+            last_heartbeat = current_time;
+        }
+        
+        // Check if new ADC data is available
+        status = adc_read_status();
+        
+        if (status & ADC_DATA_READY) {
+            // Read ADC data (clears data ready flag automatically)
+            adc_value = adc_read_data();
+            
+            // Send data to UART
+            printf("Sample %lu: ADC = %d (0x%04X)\n", 
+                   sample_count++, adc_value, adc_value);
+            
+            // Short delay after processing sample
+            usleep(1000);   // 1ms delay
+        } else {
+            // No new data, very short delay to prevent busy waiting
+            usleep(100);    // 100us delay
+        }
+    }
+    
+    return 0;
+}
