@@ -94,13 +94,12 @@ begin
   -- Delta-Sigma ADC with Avalon interface
   adc_avalon_inst : entity work.delta_sigma_adc_avalon
     generic map (
+      DECIMATION   => ADC_DECIMATION,   -- Use generic for decimation
       OUTPUT_WIDTH => 16
     )
     port map (
       clk             => clk_100m,
       reset           => system_reset,
-      
-      decimation      => ADC_DECIMATION,    -- Configurable OSR
       
       analog_in       => ANALOG_IN,
       dac_out         => DAC_OUT,

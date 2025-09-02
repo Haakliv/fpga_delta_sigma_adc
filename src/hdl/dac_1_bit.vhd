@@ -13,12 +13,14 @@ end entity;
 
 architecture Behavioral of dac_1_bit is
 begin
-  process (clk, reset)
+  process(clk)
   begin
-    if (reset = RST_ACTIVE) then
-      dac_out <= '0';
-    elsif (clk'event and clk = '1') then
-      dac_out <= data_in;
+    if rising_edge(clk) then
+      if reset = RST_ACTIVE then
+        dac_out <= '0';
+      else
+        dac_out <= data_in;
+      end if;
     end if;
   end process;
 end architecture;

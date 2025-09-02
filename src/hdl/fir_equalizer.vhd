@@ -18,24 +18,24 @@ entity fir_equalizer is
   port (
     clk       : in  std_logic;
     reset     : in  rst_t;
-    data_in   : in  std_logic_vector(INPUT_WIDTH-1 downto 0);
+    data_in   : in  std_logic_vector(INPUT_WIDTH - 1 downto 0);
     valid_in  : in  std_logic;
-    data_out  : out std_logic_vector(OUTPUT_WIDTH-1 downto 0);
+    data_out  : out std_logic_vector(OUTPUT_WIDTH - 1 downto 0);
     valid_out : out std_logic
   );
 end entity;
 
 architecture rtl of fir_equalizer is
 
-  signal prev_sample     : signed(INPUT_WIDTH-1 downto 0) := (others => '0');
-  signal current_sample  : signed(INPUT_WIDTH-1 downto 0) := (others => '0');
-  signal decimation_cnt  : std_logic := '0';
-  signal output_reg      : signed(OUTPUT_WIDTH-1 downto 0) := (others => '0');
-  signal valid_reg       : std_logic := '0';
+  signal prev_sample    : signed(INPUT_WIDTH - 1 downto 0)  := (others => '0');
+  signal current_sample : signed(INPUT_WIDTH - 1 downto 0)  := (others => '0');
+  signal decimation_cnt : std_logic                         := '0';
+  signal output_reg     : signed(OUTPUT_WIDTH - 1 downto 0) := (others => '0');
+  signal valid_reg      : std_logic                         := '0';
 
 begin
 
-  process(clk)
+  process (clk)
     variable sum : signed(INPUT_WIDTH downto 0);
   begin
     if rising_edge(clk) then
@@ -50,10 +50,10 @@ begin
         prev_sample <= current_sample;
         current_sample <= signed(data_in);
         decimation_cnt <= not decimation_cnt;
-        
+
         -- Output average every other sample
         if decimation_cnt = '1' then
-          sum := resize(prev_sample, INPUT_WIDTH+1) + resize(current_sample, INPUT_WIDTH+1);
+          sum := resize(prev_sample, INPUT_WIDTH + 1) + resize(current_sample, INPUT_WIDTH + 1);
           output_reg <= resize(shift_right(sum, 1), OUTPUT_WIDTH);
           valid_reg <= '1';
         else
@@ -65,7 +65,7 @@ begin
     end if;
   end process;
 
-  data_out <= std_logic_vector(output_reg);
+  data_out  <= std_logic_vector(output_reg);
   valid_out <= valid_reg;
 
-end architecture rtl;
+end architecture;

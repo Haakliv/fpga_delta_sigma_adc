@@ -12,15 +12,13 @@ library work;
 
 entity delta_sigma_adc_avalon is
   generic (
+    DECIMATION   : positive := 64;     -- OSR/decimation factor (compile-time constant)
     OUTPUT_WIDTH : positive := 16
   );
   port (
     -- Clock and Reset
     clk           : in  std_logic;
     reset         : in  rst_t;
-    
-    -- ADC Configuration
-    decimation    : in  positive;      -- OSR/decimation factor (selectable)
     
     -- Analog Interface
     analog_in     : in  std_logic;     -- 1-bit sigma-delta input
@@ -56,13 +54,13 @@ begin
   -- CIC SINC3 Decimator
   cic_inst : entity work.cic_sinc3_decimator
     generic map (
-      DECIMATION   => decimation,       -- Use input parameter
+      DECIMATION   => DECIMATION,  -- Use generic parameter
       OUTPUT_WIDTH => OUTPUT_WIDTH
     )
     port map (
       clk      => clk,
       reset    => reset,
-      data_in  => analog_in,
+      data_in  => analog_in,       -- 1-bit input
       data_out => adc_data_out,
       valid    => adc_valid
     );
@@ -79,6 +77,9 @@ begin
   -- For now, use simple feedback (MSB of ADC output)
   dac_input <= adc_data_out(OUTPUT_WIDTH-1) when adc_valid = '1' else '0';
 
+  -- Always-ready slave (combinational assignment)
+  avs_waitrequest <= '0';
+
   -- Register interface (simplified - read-only)
   register_process : process(clk)
   begin
@@ -87,7 +88,6 @@ begin
         adc_data_reg <= (others => '0');
         status_reg <= (others => '0');
         data_ready <= '0';
-        avs_waitrequest <= '0';
       else
         -- Capture new ADC data
         if adc_valid = '1' then
@@ -101,7 +101,6 @@ begin
         status_reg(31 downto 16) <= adc_data_reg; -- Current ADC data
         
         -- Handle Avalon read transactions
-        avs_waitrequest <= '0';
         
         if avs_read = '1' then
           case avs_address is

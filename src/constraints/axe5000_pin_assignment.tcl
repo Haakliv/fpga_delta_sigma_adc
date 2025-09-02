@@ -11,21 +11,27 @@ set_global_assignment -name DEVICE "A5ED065BB32E6SR0"
 # DELTA-SIGMA ADC WITH RC INTEGRATOR (Current Implementation)
 # ========================================================================
 
-# ADC Channel 0 - Primary RC integrator
+# ADC Channel 0 - Primary RC integrator (differential LVDS)
 set_location_assignment PIN_N2 -to lvds_adc0_p     ; # A0_P (CRUVI pin 14)
 set_location_assignment PIN_N1 -to lvds_adc0_n     ; # A0_N (CRUVI pin 16)
 set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_adc0_p
 set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_adc0_n
+# Enable on-chip differential termination and hysteresis
+set_instance_assignment -name DIFFERENTIAL_TERMINATION ON -to lvds_adc0_p
+set_instance_assignment -name INPUT_HYSTERESIS ON -to lvds_adc0_p
 
 # DAC Output for ADC Channel 0 feedback
 set_location_assignment PIN_R2 -to dac_out0        ; # A1_P (CRUVI pin 20) - Single-ended
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to dac_out0
 
-# ADC Channel 1 - Secondary RC integrator (for differential or redundancy)
+# ADC Channel 1 - Secondary RC integrator (differential LVDS)
 set_location_assignment PIN_T2 -to lvds_adc1_p     ; # A2_P (CRUVI pin 26)
 set_location_assignment PIN_T1 -to lvds_adc1_n     ; # A2_N (CRUVI pin 28)
 set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_adc1_p
 set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_adc1_n
+# Enable on-chip differential termination and hysteresis
+set_instance_assignment -name DIFFERENTIAL_TERMINATION ON -to lvds_adc1_p
+set_instance_assignment -name INPUT_HYSTERESIS ON -to lvds_adc1_p
 
 # DAC Output for ADC Channel 1 feedback
 set_location_assignment PIN_V1 -to dac_out1        ; # A3_P (CRUVI pin 32) - Single-ended
@@ -40,12 +46,18 @@ set_location_assignment PIN_T3 -to lvds_tdc0_p     ; # A4_P (CRUVI pin 38)
 set_location_assignment PIN_R4 -to lvds_tdc0_n     ; # A4_N (CRUVI pin 40)
 set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_tdc0_p
 set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_tdc0_n
+# Enable fast differential input for TDC
+set_instance_assignment -name DIFFERENTIAL_TERMINATION ON -to lvds_tdc0_p
+set_instance_assignment -name INPUT_HYSTERESIS ON -to lvds_tdc0_p
 
 # TDC Channel 1 - Secondary TDC channel
 set_location_assignment PIN_Y1 -to lvds_tdc1_p     ; # A5_P (CRUVI pin 44)
 set_location_assignment PIN_W2 -to lvds_tdc1_n     ; # A5_N (CRUVI pin 46)
 set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_tdc1_p
 set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_tdc1_n
+# Enable fast differential input for TDC
+set_instance_assignment -name DIFFERENTIAL_TERMINATION ON -to lvds_tdc1_p
+set_instance_assignment -name INPUT_HYSTERESIS ON -to lvds_tdc1_p
 
 # TDC Control signals (if needed)
 set_location_assignment PIN_V6 -to tdc_trigger     ; # B0_P (CRUVI pin 15) - Single-ended

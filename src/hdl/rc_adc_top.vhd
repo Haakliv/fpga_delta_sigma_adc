@@ -64,17 +64,15 @@ architecture rtl of rc_adc_top is
 
   component cic_sinc3_decimator is
     generic (
-      DECIMATION_FACTOR : positive := 64;
-      INPUT_WIDTH       : positive := 1;
-      OUTPUT_WIDTH      : positive := 16
+      DECIMATION   : positive := 64;
+      OUTPUT_WIDTH : positive := 16
     );
     port (
-      clk       : in  std_logic;
-      reset     : in  rst_t;
-      data_in   : in  std_logic_vector(INPUT_WIDTH-1 downto 0);
-      valid_in  : in  std_logic;
-      data_out  : out std_logic_vector(OUTPUT_WIDTH-1 downto 0);
-      valid_out : out std_logic
+      clk      : in  std_logic;
+      reset    : in  rst_t;
+      data_in  : in  std_logic;  -- 1-bit delta-sigma stream
+      data_out : out std_logic_vector(OUTPUT_WIDTH-1 downto 0);
+      valid    : out std_logic   -- high one cycle per output
     );
   end component;
 
@@ -109,7 +107,9 @@ architecture rtl of rc_adc_top is
   end component;
 
   -- Internal signals
-  signal comparator_out   : std_logic;
+  signal lvds_bit_stream  : std_logic;  -- Output from LVDS comparator
+  signal analog_in_sync   : std_logic_vector(1 downto 0) := (others => '0');
+  signal dac_input        : std_logic;
   signal cic_data_out     : std_logic_vector(DATA_WIDTH-1 downto 0);
   signal cic_valid_out    : std_logic;
   signal eq_data_out      : std_logic_vector(DATA_WIDTH-1 downto 0);
@@ -124,7 +124,7 @@ architecture rtl of rc_adc_top is
 
 begin
 
-  -- LVDS input stage
+  -- LVDS input stage with comparator
   lvds_inst : lvds_comparator
     generic map (
       ENABLE_MAJORITY => ENABLE_MAJORITY
@@ -134,32 +134,47 @@ begin
       reset      => reset,
       lvds_p     => lvds_p,
       lvds_n     => lvds_n,
-      bit_stream => comparator_out
+      bit_stream => lvds_bit_stream  -- Connect to synchronizer
     );
 
-  -- DAC feedback
+  -- 2-FF synchronizer for comparator bit (critical for sigma-delta feedback)
+  -- This synchronizes the LVDS comparator output into the clk domain
+  sync_process : process(clk)
+  begin
+    if rising_edge(clk) then
+      if reset = RST_ACTIVE then
+        analog_in_sync <= (others => '0');
+      else
+        -- Synchronize LVDS comparator output into clk domain
+        analog_in_sync <= analog_in_sync(0) & lvds_bit_stream;
+      end if;
+    end if;
+  end process;
+
+  -- Drive DAC at full rate with synchronized bit (CRITICAL!)
+  dac_input <= analog_in_sync(1);
+
+  -- DAC feedback at full sampling rate
   dac_inst : dac_1_bit
     port map (
       clk     => clk,
       reset   => reset,
-      data_in => comparator_out,
+      data_in => dac_input,
       dac_out => dac_out
     );
 
-  -- CIC SINC3 decimator
+  -- CIC SINC3 decimator (uses synchronized bit)
   cic_inst : cic_sinc3_decimator
     generic map (
-      DECIMATION_FACTOR => OSR,
-      INPUT_WIDTH       => 1,
-      OUTPUT_WIDTH      => DATA_WIDTH
+      DECIMATION   => OSR,
+      OUTPUT_WIDTH => DATA_WIDTH
     )
     port map (
-      clk       => clk,
-      reset     => reset,
-      data_in(0) => comparator_out,
-      valid_in  => '1',  -- Always valid at input rate
-      data_out  => cic_data_out,
-      valid_out => cic_valid_out
+      clk      => clk,
+      reset    => reset,
+      data_in  => analog_in_sync(1),  -- 1-bit synchronized input
+      data_out => cic_data_out,
+      valid    => cic_valid_out
     );
 
   -- Decimation by 2 equalizer
@@ -214,7 +229,7 @@ begin
         end if;
         
         -- Build status register
-        status_reg(0) <= comparator_out;              -- Live comparator
+        status_reg(0) <= analog_in_sync(1);          -- Live comparator bit
         status_reg(1) <= cic_valid_out;               -- CIC active
         status_reg(2) <= eq_valid_out;                -- Equalizer active
         status_reg(3) <= lp_valid_out;                -- Final output valid
