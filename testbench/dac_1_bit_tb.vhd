@@ -32,7 +32,7 @@ begin
   clk_process: process
   begin
     while true loop
-      clk_gen(clk, 20 ns);  -- 20 ns period (same as before: 10ns low + 10ns high)
+      clk_gen(clk, 20 ns); -- 20 ns period (same as before: 10ns low + 10ns high)
     end loop;
   end process;
 
