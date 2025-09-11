@@ -1,57 +1,66 @@
 library ieee;
-  use IEEE.std_logic_1164.all;
+use IEEE.std_logic_1164.all;
 
-library work;
-  use work.clk_rst_pkg.all;
+library vunit_lib;
+context vunit_lib.vunit_context;
+
+library fpga_lib;
+use fpga_lib.clk_rst_pkg.all;
 
 entity dac_1_bit_tb is
+  generic(runner_cfg : string);
 end entity;
 
 architecture testbench of dac_1_bit_tb is
-  signal clk     : std_logic := '0';
-  signal reset   : rst_t     := not RST_ACTIVE;
-  signal data_in : std_logic := '0';
-  signal dac_out : std_logic;
-
-  component dac_1_bit is
-    port (clk     : in  std_logic;
-          reset   : in  rst_t;
-          data_in : in  std_logic;
-          dac_out : out std_logic);
-  end component;
+  signal clk          : std_logic := '0';
+  signal reset        : std_logic := '0'; -- Changed to std_logic
+  signal data_in      : std_logic := '0';
+  signal dac_out      : std_logic;
+  signal sim_finished : boolean   := false;
 
 begin
-  uut: dac_1_bit
-    port map (
+  uut : entity work.dac_1_bit
+    port map(
       clk     => clk,
       reset   => reset,
       data_in => data_in,
       dac_out => dac_out
     );
 
-  clk_process: process
+  clk_process : process
   begin
-    while true loop
-      clk_gen(clk, 20 ns); -- 20 ns period (same as before: 10ns low + 10ns high)
+    while not sim_finished loop
+      clk_gen(clk, 20 ns);              -- 20 ns period (same as before: 10ns low + 10ns high)
     end loop;
+    wait;
   end process;
 
-  stimulus: process
+  stimulus : process
   begin
-    reset <= RST_ACTIVE;
-    wait for 20 ns;
-    reset <= not RST_ACTIVE;
+    test_runner_setup(runner, runner_cfg);
 
-    data_in <= '1';
-    wait for 20 ns;
+    while test_suite loop
+      if run("test_dac_output") then
+        reset <= '1';
+        wait for 20 ns;
+        reset <= '0';
 
-    data_in <= '0';
-    wait for 20 ns;
+        data_in <= '1';
+        wait for 20 ns;
+        check_equal(dac_out, '1', "DAC output should be '1' when data_in is '1'");
 
-    data_in <= '1';
-    wait for 20 ns;
+        data_in <= '0';
+        wait for 20 ns;
+        check_equal(dac_out, '0', "DAC output should be '0' when data_in is '0'");
 
-    wait;
+        data_in <= '1';
+        wait for 20 ns;
+        check_equal(dac_out, '1', "DAC output should be '1' when data_in is '1' again");
+      end if;
+    end loop;
+
+    test_runner_cleanup(runner);
+    sim_finished <= true;
   end process;
 
 end architecture;

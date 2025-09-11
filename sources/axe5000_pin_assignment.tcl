@@ -11,31 +11,18 @@ set_global_assignment -name DEVICE "A5ED065BB32E6SR0"
 # DELTA-SIGMA ADC WITH RC INTEGRATOR (Current Implementation)
 # ========================================================================
 
-# ADC Channel 0 - Primary RC integrator (differential LVDS)
-set_location_assignment PIN_N2 -to lvds_adc0_p     ; # A0_P (CRUVI pin 14)
-set_location_assignment PIN_N1 -to lvds_adc0_n     ; # A0_N (CRUVI pin 16)
-set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_adc0_p
-set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_adc0_n
-# Enable on-chip differential termination and hysteresis
-set_instance_assignment -name DIFFERENTIAL_TERMINATION ON -to lvds_adc0_p
-set_instance_assignment -name INPUT_HYSTERESIS ON -to lvds_adc0_p
+# ADC Input - A0 differential pair (CRUVI HS connection)
+set_location_assignment PIN_N2 -to ANALOG_IN_P     ; # A0_P (CRUVI pin 14)
+set_location_assignment PIN_N1 -to ANALOG_IN_N     ; # A0_N (CRUVI pin 16)
+set_instance_assignment -name IO_STANDARD "LVDS" -to ANALOG_IN_P
+set_instance_assignment -name IO_STANDARD "LVDS" -to ANALOG_IN_N
+# Enable on-chip differential termination and hysteresis for better noise immunity
+set_instance_assignment -name DIFFERENTIAL_TERMINATION ON -to ANALOG_IN_P
+set_instance_assignment -name INPUT_HYSTERESIS ON -to ANALOG_IN_P
 
-# DAC Output for ADC Channel 0 feedback
-set_location_assignment PIN_R2 -to dac_out0        ; # A1_P (CRUVI pin 20) - Single-ended
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to dac_out0
-
-# ADC Channel 1 - Secondary RC integrator (differential LVDS)
-set_location_assignment PIN_T2 -to lvds_adc1_p     ; # A2_P (CRUVI pin 26)
-set_location_assignment PIN_T1 -to lvds_adc1_n     ; # A2_N (CRUVI pin 28)
-set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_adc1_p
-set_instance_assignment -name IO_STANDARD "LVDS" -to lvds_adc1_n
-# Enable on-chip differential termination and hysteresis
-set_instance_assignment -name DIFFERENTIAL_TERMINATION ON -to lvds_adc1_p
-set_instance_assignment -name INPUT_HYSTERESIS ON -to lvds_adc1_p
-
-# DAC Output for ADC Channel 1 feedback
-set_location_assignment PIN_V1 -to dac_out1        ; # A3_P (CRUVI pin 32) - Single-ended
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to dac_out1
+# DAC Feedback Output - HSO (HS Serial Out)
+set_location_assignment PIN_N6 -to DAC_OUT         ; # HSO (CRUVI pin 6)
+set_instance_assignment -name IO_STANDARD "ADJUSTABLE" -to DAC_OUT
 
 # ========================================================================
 # FUTURE TDC DEVELOPMENT (Time-to-Digital Converter)
@@ -129,11 +116,9 @@ create_clock -name C_REFCLK -period 10.000 [get_ports C_REFCLK]
 derive_pll_clocks
 derive_clock_uncertainty
 
-# LVDS input timing
-set_input_delay -clock CLK_25M_C -max 2.0 [get_ports lvds_adc0_p]
-set_input_delay -clock CLK_25M_C -min 0.5 [get_ports lvds_adc0_p]
-set_input_delay -clock CLK_25M_C -max 2.0 [get_ports lvds_adc1_p]
-set_input_delay -clock CLK_25M_C -min 0.5 [get_ports lvds_adc1_p]
+# LVDS input timing for RC ADC
+set_input_delay -clock CLK_25M_C -max 2.0 [get_ports ANALOG_IN_P]
+set_input_delay -clock CLK_25M_C -min 0.5 [get_ports ANALOG_IN_P]
 
 # TDC high-speed timing (tighter constraints)
 set_input_delay -clock CLK_25M_C -max 0.5 [get_ports lvds_tdc0_p]
@@ -142,7 +127,5 @@ set_input_delay -clock CLK_25M_C -max 0.5 [get_ports lvds_tdc1_p]
 set_input_delay -clock CLK_25M_C -min 0.1 [get_ports lvds_tdc1_p]
 
 # DAC output timing
-set_output_delay -clock CLK_25M_C -max 5.0 [get_ports dac_out0]
-set_output_delay -clock CLK_25M_C -min 1.0 [get_ports dac_out0]
-set_output_delay -clock CLK_25M_C -max 5.0 [get_ports dac_out1]
-set_output_delay -clock CLK_25M_C -min 1.0 [get_ports dac_out1]
+set_output_delay -clock CLK_25M_C -max 5.0 [get_ports DAC_OUT]
+set_output_delay -clock CLK_25M_C -min 1.0 [get_ports DAC_OUT]
