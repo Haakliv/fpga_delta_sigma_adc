@@ -251,5 +251,10 @@ Thumbs.db
 !.vscode/tasks.json
 !requirements.txt
 !run.py
+
+# Override whitelist for auto-generated Platform Designer files
+*_inst.v
+*_inst.vhd
+*_bb.v
 /niosv_system/niosv_system_inst.vhd
 /niosv_system/niosv_system_bb.v
