@@ -45,12 +45,14 @@ set_global_assignment -name USE_INIT_DONE SDM_IO0
 set_global_assignment -name ACTIVE_SERIAL_CLOCK AS_FREQ_25MHZ
 set_global_assignment -name DEVICE_INITIALIZATION_CLOCK OSC_CLK_1_25MHZ
 set_global_assignment -name VHDL_FILE sources/clk_rst_pkg.vhd
+set_global_assignment -name VHDL_FILE sources/about_pkg.vhd
+set_global_assignment -name VHDL_FILE sources/about.vhd
+set_global_assignment -name VHDL_FILE sources/addr_decoder.vhd
 set_global_assignment -name VHDL_FILE sources/tdc_quantizer.vhd
 set_global_assignment -name VHDL_FILE sources/rc_adc_top.vhd
 set_global_assignment -name VHDL_FILE sources/lvds_comparator.vhd
 set_global_assignment -name VHDL_FILE sources/fir_lowpass.vhd
 set_global_assignment -name VHDL_FILE sources/fir_equalizer.vhd
-set_global_assignment -name VHDL_FILE sources/delta_sigma_adc_avalon.vhd
 set_global_assignment -name VHDL_FILE sources/dac_1_bit.vhd
 set_global_assignment -name VHDL_FILE sources/cic_sinc3_decimator.vhd
 set_global_assignment -name VHDL_FILE sources/axe5000_top.vhd
@@ -108,3 +110,4 @@ set_global_assignment -name POWER_APPLY_THERMAL_MARGIN ADDITIONAL
 set_global_assignment -name EDA_SIMULATION_TOOL "Questa Intel FPGA (VHDL)"
 set_global_assignment -name EDA_OUTPUT_DATA_FORMAT VHDL -section_id eda_simulation
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
+set_global_assignment -name IP_FILE ip/niosv_system/niosv_system_mm_ccb_0.ip

@@ -801,11 +801,6 @@ https://fpgasoftware.intel.com/eula.-->
    }
    element sdm_mailbox_client
    {
-      datum _originalVersion
-      {
-         value = "1.0.0";
-         type = "String";
-      }
    }
 }
 </ipxact:value>

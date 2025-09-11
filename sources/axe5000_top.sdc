@@ -17,7 +17,8 @@ set_time_format -unit ns -decimal_places 3
 
 create_clock -name {ClkIn} -period 40.000 -waveform { 0.000 20.000 } [get_ports {CLK_25M_C}]
 
-derive_pll_clocks -create_base_clocks
+# Note: derive_pll_clocks not supported in Agilex 5
+# derive_pll_clocks -create_base_clocks
 derive_clock_uncertainty
 
 #**************************************************************
@@ -29,6 +30,7 @@ derive_clock_uncertainty
 # Set False Path
 #**************************************************************
 
-set_false_path -from [get_ports {USER_BTN}]  
+# Reset is asynchronous
+set_false_path -from [get_ports {CPU_RESETn}]  
 
 

@@ -741,11 +741,6 @@ https://fpgasoftware.intel.com/eula.-->
    }
    element dip_sw
    {
-      datum _originalVersion
-      {
-         value = "19.2.3";
-         type = "String";
-      }
    }
 }
 </ipxact:value>

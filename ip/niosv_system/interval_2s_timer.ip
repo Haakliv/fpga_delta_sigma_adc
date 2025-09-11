@@ -788,11 +788,6 @@ https://fpgasoftware.intel.com/eula.-->
    }
    element interval_2s_timer
    {
-      datum _originalVersion
-      {
-         value = "19.3.4";
-         type = "String";
-      }
    }
 }
 </ipxact:value>

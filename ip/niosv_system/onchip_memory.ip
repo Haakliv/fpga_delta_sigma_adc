@@ -890,7 +890,7 @@ https://fpgasoftware.intel.com/eula.-->
         <ipxact:parameter parameterId="device" type="string">
           <ipxact:name>device</ipxact:name>
           <ipxact:displayName>Device</ipxact:displayName>
-          <ipxact:value>A5EC065BB32AE4S</ipxact:value>
+          <ipxact:value>A5EC008BM16AE6S</ipxact:value>
         </ipxact:parameter>
         <ipxact:parameter parameterId="deviceFamily" type="string">
           <ipxact:name>deviceFamily</ipxact:name>
@@ -922,11 +922,6 @@ https://fpgasoftware.intel.com/eula.-->
    }
    element onchip_memory
    {
-      datum _originalVersion
-      {
-         value = "1.4.9";
-         type = "String";
-      }
    }
 }
 </ipxact:value>

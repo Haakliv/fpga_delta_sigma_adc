@@ -126,7 +126,7 @@ begin
     );
 
   -- Final low-pass filter
-  lp_inst : entity fpga_lib.fir_lowpass
+  lp_inst : entity work.fir_lowpass
     generic map(
       INPUT_WIDTH  => DATA_WIDTH,
       OUTPUT_WIDTH => DATA_WIDTH

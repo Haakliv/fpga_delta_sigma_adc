@@ -83,7 +83,7 @@ architecture rtl of axe5000_top is
       mm_ccb_0_m0_waitrequest   : in  std_logic;
       mm_ccb_0_m0_readdata      : in  std_logic_vector(31 downto 0);
       mm_ccb_0_m0_readdatavalid : in  std_logic;
-      mm_ccb_0_m0_burstcount    : out std_logic;
+      mm_ccb_0_m0_burstcount    : out std_logic_vector(0 downto 0);
       mm_ccb_0_m0_writedata     : out std_logic_vector(31 downto 0);
       mm_ccb_0_m0_address       : out std_logic_vector(15 downto 0);
       mm_ccb_0_m0_write         : out std_logic;

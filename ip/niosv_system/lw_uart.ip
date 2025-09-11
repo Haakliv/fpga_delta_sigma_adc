@@ -882,11 +882,6 @@ https://fpgasoftware.intel.com/eula.-->
    }
    element lw_uart
    {
-      datum _originalVersion
-      {
-         value = "1.0.7";
-         type = "String";
-      }
    }
 }
 </ipxact:value>

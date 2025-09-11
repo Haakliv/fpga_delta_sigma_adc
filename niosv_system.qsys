@@ -103,6 +103,11 @@ https://fpgasoftware.intel.com/eula.-->
          value = "6";
          type = "int";
       }
+      datum sopceditor_expanded
+      {
+         value = "1";
+         type = "boolean";
+      }
    }
    element jtag_uart.avalon_jtag_slave
    {
@@ -792,236 +797,6 @@ https://fpgasoftware.intel.com/eula.-->
                         &lt;/entry&gt;
                     &lt;/parameterValueMap&gt;
                 &lt;/parameters&gt;
-                &lt;cmsisInfo&gt;
-                    &lt;cmsisSrcFileContents&gt;&amp;lt;?xml version="1.0" encoding="utf-8"?&amp;gt;    
-&amp;lt;device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD_Schema_1_1.xsd" &amp;gt;
-  &amp;lt;peripherals&amp;gt;
-   &amp;lt;peripheral&amp;gt;
-      &amp;lt;name&amp;gt;altera_avalon_timer&amp;lt;/name&amp;gt;&amp;lt;baseAddress&amp;gt;0x00000000&amp;lt;/baseAddress&amp;gt; 
-      &amp;lt;addressBlock&amp;gt;
-        &amp;lt;offset&amp;gt;0x0&amp;lt;/offset&amp;gt;
-        &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-        &amp;lt;usage&amp;gt;registers&amp;lt;/usage&amp;gt;
-      &amp;lt;/addressBlock&amp;gt;
-       &amp;lt;registers&amp;gt;
-         &amp;lt;register&amp;gt;     
-          &amp;lt;name&amp;gt;status&amp;lt;/name&amp;gt;  
-          &amp;lt;displayName&amp;gt;Status&amp;lt;/displayName&amp;gt;
-          &amp;lt;description&amp;gt;The status register has two defined bits. TO (timeout), RUN&amp;lt;/description&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x0&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-          &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-          &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;TO&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;The TO (timeout) bit is set to 1 when the internal counter reaches zero. Once set by a timeout event, the TO bit stays set until explicitly cleared by a master peripheral. Write zero to the status register to clear the TO bit.&amp;lt;/description&amp;gt;
-             &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-             &amp;lt;bitWidth&amp;gt;1&amp;lt;/bitWidth&amp;gt;
-             &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-             &amp;lt;readAction&amp;gt;clear&amp;lt;/readAction&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;RUN&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;The RUN bit reads as 1 when the internal counter is running; otherwise this bit reads as 0. The RUN bit is not changed by
- a write operation to the status register.&amp;lt;/description&amp;gt;
-             &amp;lt;bitOffset&amp;gt;1&amp;lt;/bitOffset&amp;gt;
-             &amp;lt;bitWidth&amp;gt;1&amp;lt;/bitWidth&amp;gt;
-             &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-             &amp;lt;name&amp;gt;Reserved&amp;lt;/name&amp;gt;
-             &amp;lt;description&amp;gt;Reserved&amp;lt;/description&amp;gt;
-             &amp;lt;bitOffset&amp;gt;2&amp;lt;/bitOffset&amp;gt;
-             &amp;lt;bitWidth&amp;gt;14&amp;lt;/bitWidth&amp;gt;
-             &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-             &amp;lt;parameters&amp;gt;
-                 &amp;lt;parameter&amp;gt;
-                 &amp;lt;name&amp;gt;Reserved&amp;lt;/name&amp;gt;
-                 &amp;lt;value&amp;gt;true&amp;lt;/value&amp;gt;
-                 &amp;lt;/parameter&amp;gt;
-             &amp;lt;/parameters&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt; 
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;control&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;The control register has four defined bits. ITO (Timeout Interrupt), CONT (continue), START, STOP&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x1&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;reset&amp;gt;
-                &amp;lt;value&amp;gt;0x0&amp;lt;/value&amp;gt;
-            &amp;lt;/reset&amp;gt;
-            &amp;lt;field&amp;gt;
-                &amp;lt;name&amp;gt;ITO&amp;lt;/name&amp;gt;
-                &amp;lt;description&amp;gt;If the ITO bit is 1, the interval timer core generates an IRQ when the status register's TO bit is 1. When the ITO bit is 0, the timer does not generate IRQs.&amp;lt;/description&amp;gt;
-                &amp;lt;bitOffset&amp;gt;0&amp;lt;/bitOffset&amp;gt;
-                &amp;lt;bitWidth&amp;gt;1&amp;lt;/bitWidth&amp;gt;
-                &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-                &amp;lt;name&amp;gt;CONT&amp;lt;/name&amp;gt;
-                &amp;lt;description&amp;gt;The CONT (continuous) bit determines how the internal counter behaves when it reaches zero. If the CONT bit is 1, the counter runs continuously until it is stopped by the STOP bit. If CONT is 0, the counter stops after it reaches zero. When the counter reaches zero, it reloads with the value stored in the period registers, regardless of the CONT bit.&amp;lt;/description&amp;gt;
-                &amp;lt;bitOffset&amp;gt;1&amp;lt;/bitOffset&amp;gt;
-                &amp;lt;bitWidth&amp;gt;1&amp;lt;/bitWidth&amp;gt;
-                &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-                &amp;lt;name&amp;gt;START&amp;lt;/name&amp;gt;
-                &amp;lt;description&amp;gt;Writing a 1 to the START bit starts the internal counter running (counting down). The START bit is an event bit that enables the counter when a write operation is performed. If the timer is stopped, writing a 1 to the START bit causes the timer to restart counting from the number currently stored in its counter. If the timer is already running, writing a 1 to START has no effect. Writing 0 to the START bit has no effect.&amp;lt;/description&amp;gt;
-                &amp;lt;bitOffset&amp;gt;2&amp;lt;/bitOffset&amp;gt;
-                &amp;lt;bitWidth&amp;gt;1&amp;lt;/bitWidth&amp;gt;
-                &amp;lt;access&amp;gt;write-only&amp;lt;/access&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-                &amp;lt;name&amp;gt;STOP&amp;lt;/name&amp;gt;
-                &amp;lt;description&amp;gt;Writing a 1 to the STOP bit stops the internal counter. The STOP bit is an event bit that causes the counter to stop when a write operation is performed. If the timer is already stopped, writing a 1 to STOP has no effect. Writing a 0 to the stop bit has no effect. If the timer hardware is configured with Start/Stop control bits off, writing the STOP bit has no effect.&amp;lt;/description&amp;gt;
-                &amp;lt;bitOffset&amp;gt;3&amp;lt;/bitOffset&amp;gt;
-                &amp;lt;bitWidth&amp;gt;1&amp;lt;/bitWidth&amp;gt;
-                &amp;lt;access&amp;gt;write-only&amp;lt;/access&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-                &amp;lt;name&amp;gt;Reserved&amp;lt;/name&amp;gt;
-                &amp;lt;description&amp;gt;Reserved&amp;lt;/description&amp;gt;
-                &amp;lt;bitOffset&amp;gt;4&amp;lt;/bitOffset&amp;gt;
-                &amp;lt;bitWidth&amp;gt;12&amp;lt;/bitWidth&amp;gt;
-                &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-                &amp;lt;parameters&amp;gt;
-                    &amp;lt;parameter&amp;gt;
-                    &amp;lt;name&amp;gt;Reserved&amp;lt;/name&amp;gt;
-                    &amp;lt;value&amp;gt;true&amp;lt;/value&amp;gt;
-                    &amp;lt;/parameter&amp;gt;
-                &amp;lt;/parameters&amp;gt;
-            &amp;lt;/field&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;${period_name_0}&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;The period_n registers together store the timeout period value when a write operation to one of the period_n register or the internal counter reaches 0. The timer's actual period is one cycle greater than the value stored in the period_n registers because the counter assumes the value zero for one clock cycle. Writing to one of the period_n registers stops the internal counter, except when the hardware is configured with Start/Stop control bits off. If Start/Stop control bits is off, writing either register does not stop the counter. When the hardware is configured with Writeable period disabled, writing to one of the period_n registers causes the counter to reset to the fixed Timeout Period specified at system generation time.&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x2&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;resetValue&amp;gt;${period_name_0_reset_value}&amp;lt;/resetValue&amp;gt;
-            &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;${period_name_1}&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x3&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;resetValue&amp;gt;${period_name_1_reset_value}&amp;lt;/resetValue&amp;gt;
-            &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;${period_snap_0}&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x4&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;resetValue&amp;gt;${period_snap_0_reset_value}&amp;lt;/resetValue&amp;gt;
-            &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;${period_snap_1}&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x5&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;resetValue&amp;gt;${period_snap_1_reset_value}&amp;lt;/resetValue&amp;gt;
-            &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;${snap_0}&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;A master peripheral may request a coherent snapshot of the current internal counter by performing a write operation (write-data ignored) to one of the snap_n registers. When a write occurs, the value of the counter is copied to snap_n registers. The snapshot occurs whether or not the counter is running. Requesting a snapshot does not change the internal counter's operation.&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x6&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-            &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;${snap_1}&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x7&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-            &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;${snap_2}&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x8&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-            &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-            &amp;lt;name&amp;gt;${snap_3}&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;&amp;lt;/description&amp;gt;
-            &amp;lt;addressOffset&amp;gt;0x9&amp;lt;/addressOffset&amp;gt;
-            &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-            &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-            &amp;lt;resetMask&amp;gt;0xffff&amp;lt;/resetMask&amp;gt;
-        &amp;lt;/register&amp;gt;
-    &amp;lt;/registers&amp;gt;
-   &amp;lt;/peripheral&amp;gt;
-  &amp;lt;/peripherals&amp;gt;
-&amp;lt;/device&amp;gt; &lt;/cmsisSrcFileContents&gt;
-                    &lt;addressGroup&gt;&lt;/addressGroup&gt;
-                    &lt;cmsisVars&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;period_name_1_reset_value&lt;/key&gt;
-                            &lt;value&gt;0xbeb&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;snap_0&lt;/key&gt;
-                            &lt;value&gt;Reserved&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;period_name_0_reset_value&lt;/key&gt;
-                            &lt;value&gt;0xc1ff&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;snap_2&lt;/key&gt;
-                            &lt;value&gt;Reserved&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;snap_1&lt;/key&gt;
-                            &lt;value&gt;Reserved&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;snap_3&lt;/key&gt;
-                            &lt;value&gt;Reserved&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;period_name_0&lt;/key&gt;
-                            &lt;value&gt;periodl&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;period_name_1&lt;/key&gt;
-                            &lt;value&gt;periodh&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;period_snap_1&lt;/key&gt;
-                            &lt;value&gt;snaph&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;period_snap_1_reset_value&lt;/key&gt;
-                            &lt;value&gt;0x0&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;period_snap_0_reset_value&lt;/key&gt;
-                            &lt;value&gt;0x0&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;period_snap_0&lt;/key&gt;
-                            &lt;value&gt;snapl&lt;/value&gt;
-                        &lt;/entry&gt;
-                    &lt;/cmsisVars&gt;
-                &lt;/cmsisInfo&gt;
             &lt;/interface&gt;
             &lt;interface&gt;
                 &lt;name&gt;irq&lt;/name&gt;
@@ -2212,7 +1987,7 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
@@ -2556,133 +2331,6 @@ https://fpgasoftware.intel.com/eula.-->
                         &lt;/entry&gt;
                     &lt;/parameterValueMap&gt;
                 &lt;/parameters&gt;
-                &lt;cmsisInfo&gt;
-                    &lt;cmsisSrcFileContents&gt;&amp;lt;?xml version="1.0" encoding="utf-8"?&amp;gt;    
-&amp;lt;device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD_Schema_1_1.xsd" &amp;gt;
-  &amp;lt;peripherals&amp;gt;
-   &amp;lt;peripheral&amp;gt;
-      &amp;lt;name&amp;gt;altera_avalon_pio&amp;lt;/name&amp;gt;&amp;lt;baseAddress&amp;gt;0x00000000&amp;lt;/baseAddress&amp;gt; 
-      &amp;lt;addressBlock&amp;gt;
-        &amp;lt;offset&amp;gt;0x0&amp;lt;/offset&amp;gt;
-        &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-        &amp;lt;usage&amp;gt;registers&amp;lt;/usage&amp;gt;
-      &amp;lt;/addressBlock&amp;gt;
-      &amp;lt;registers&amp;gt;
-        &amp;lt;register&amp;gt;     
-         &amp;lt;name&amp;gt;DATA&amp;lt;/name&amp;gt;  
-         &amp;lt;displayName&amp;gt;Data&amp;lt;/displayName&amp;gt;
-         &amp;lt;description&amp;gt;Reading from data returns the value present at the input ports. If the PIO core hardware is configured in output-only mode, reading from data returns an undefined value. Writing to data stores the value to a register that drives the output ports. If the PIO core hardware is configured in input-only mode, writing to data has no effect. If the PIO core hardware is in bidirectional mode, the registered value appears on an output port only when the corresponding bit in the direction register is set to 1 (output).&amp;lt;/description&amp;gt;
-         &amp;lt;addressOffset&amp;gt;0x0&amp;lt;/addressOffset&amp;gt;
-         &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-         &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-         &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-         &amp;lt;resetMask&amp;gt;0xffffffff&amp;lt;/resetMask&amp;gt; 
-         &amp;lt;fields&amp;gt;
-           &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;data&amp;lt;/name&amp;gt;
-           &amp;lt;description&amp;gt;Reads: Data value currently on PIO inputs. Writes: New value to drive on PIO outputs.&amp;lt;/description&amp;gt;
-            &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-            &amp;lt;bitWidth&amp;gt;32&amp;lt;/bitWidth&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-        &amp;lt;/field&amp;gt;
-       &amp;lt;/fields&amp;gt;
-     &amp;lt;/register&amp;gt; 
-        &amp;lt;register&amp;gt;     
-         &amp;lt;name&amp;gt;DIRECTION&amp;lt;/name&amp;gt;  
-         &amp;lt;displayName&amp;gt;Direction&amp;lt;/displayName&amp;gt;
-         &amp;lt;description&amp;gt;The direction register controls the data direction for each PIO port, assuming the port is bidirectional. When bit n in direction is set to 1, port n drives out the value in the corresponding bit of the data register The direction register only exists when the PIO core hardware is configured in bidirectional mode. The mode (input, output, or bidirectional) is specified at system generation time, and cannot be changed at runtime. In input-only or output-only mode, the direction register does not exist. In this case, reading direction returns an undefined value, writing direction has no effect. After reset, all bits of direction are 0, so that all bidirectional I/O ports are configured as inputs. If those PIO ports are connected to device pins, the pins are held in a high-impedance state. In bi-directional mode, to change the direction of the PIO port, reprogram the direction register.&amp;lt;/description&amp;gt;
-         &amp;lt;addressOffset&amp;gt;0x4&amp;lt;/addressOffset&amp;gt;
-         &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-         &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-         &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-         &amp;lt;resetMask&amp;gt;0xffffffff&amp;lt;/resetMask&amp;gt; 
-         &amp;lt;fields&amp;gt;
-           &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;direction&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;Individual direction control for each I/O port. A value of 0 sets the direction to input; 1 sets the direction to output.&amp;lt;/description&amp;gt;
-            &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-            &amp;lt;bitWidth&amp;gt;32&amp;lt;/bitWidth&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-        &amp;lt;/field&amp;gt;
-       &amp;lt;/fields&amp;gt;
-     &amp;lt;/register&amp;gt; 
-        &amp;lt;register&amp;gt;     
-         &amp;lt;name&amp;gt;IRQ_MASK&amp;lt;/name&amp;gt;  
-         &amp;lt;displayName&amp;gt;Interrupt mask&amp;lt;/displayName&amp;gt;
-         &amp;lt;description&amp;gt;Setting a bit in the interruptmask register to 1 enables interrupts for the corresponding PIO input port. Interrupt behavior depends on the hardware configuration of the PIO core. The interruptmask register only exists when the hardware is configured to generate IRQs. If the core cannot generate IRQs, reading interruptmask returns an undefined value, and writing to interruptmask has no effect. After reset, all bits of interruptmask are zero, so that interrupts are disabled for all PIO ports.&amp;lt;/description&amp;gt;
-         &amp;lt;addressOffset&amp;gt;0x8&amp;lt;/addressOffset&amp;gt;
-         &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-         &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-         &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-         &amp;lt;resetMask&amp;gt;0xffffffff&amp;lt;/resetMask&amp;gt; 
-         &amp;lt;fields&amp;gt;
-           &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;interruptmask&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;IRQ enable/disable for each input port. Setting a bit to 1 enables interrupts for the corresponding port.&amp;lt;/description&amp;gt;
-            &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-            &amp;lt;bitWidth&amp;gt;32&amp;lt;/bitWidth&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-        &amp;lt;/field&amp;gt;
-       &amp;lt;/fields&amp;gt;
-     &amp;lt;/register&amp;gt; 
-        &amp;lt;register&amp;gt;     
-         &amp;lt;name&amp;gt;EDGE_CAP&amp;lt;/name&amp;gt;  
-         &amp;lt;displayName&amp;gt;Edge capture&amp;lt;/displayName&amp;gt;
-         &amp;lt;description&amp;gt;Bit n in the edgecapture register is set to 1 whenever an edge is detected on input port n. An Avalon-MM master peripheral can read the edgecapture register to determine if an edge has occurred on any of the PIO input ports. If the option Enable bit-clearing for edge capture register is turned off, writing any value to the edgecapture register clears all bits in the register. Otherwise, writing a 1 to a particular bit in the register clears only that bit. The type of edge(s) to detect is fixed in hardware at system generation time. The edgecapture register only exists when the hardware is configured to capture edges. If the core is not configured to capture edges, reading from edgecapture returns an undefined value, and writing to edgecapture has no effect.&amp;lt;/description&amp;gt;
-         &amp;lt;addressOffset&amp;gt;0xc&amp;lt;/addressOffset&amp;gt;
-         &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-         &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-         &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-         &amp;lt;resetMask&amp;gt;0xffffffff&amp;lt;/resetMask&amp;gt; 
-         &amp;lt;fields&amp;gt;
-           &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;edgecapture&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;Edge detection for each input port.&amp;lt;/description&amp;gt;
-            &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-            &amp;lt;bitWidth&amp;gt;32&amp;lt;/bitWidth&amp;gt;
-            &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-        &amp;lt;/field&amp;gt;
-       &amp;lt;/fields&amp;gt;
-     &amp;lt;/register&amp;gt; 
-        &amp;lt;register&amp;gt;
-         &amp;lt;name&amp;gt;SET_BIT&amp;lt;/name&amp;gt;  
-         &amp;lt;displayName&amp;gt;Outset&amp;lt;/displayName&amp;gt;
-         &amp;lt;description&amp;gt;You can use the outset register to set individual bits of the output port. For example, to set bit 6 of the output port, write 0x40 to the outset register. This register is only present when the option Enable individual bit set/clear output register is turned on.&amp;lt;/description&amp;gt;
-         &amp;lt;addressOffset&amp;gt;0x10&amp;lt;/addressOffset&amp;gt;
-         &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-         &amp;lt;access&amp;gt;write-only&amp;lt;/access&amp;gt;
-         &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-         &amp;lt;resetMask&amp;gt;0xffffffff&amp;lt;/resetMask&amp;gt; 
-         &amp;lt;fields&amp;gt;
-           &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;outset&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;Specifies which bit of the output port to set.&amp;lt;/description&amp;gt;
-            &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-            &amp;lt;bitWidth&amp;gt;32&amp;lt;/bitWidth&amp;gt;
-            &amp;lt;access&amp;gt;write-only&amp;lt;/access&amp;gt;
-        &amp;lt;/field&amp;gt;
-       &amp;lt;/fields&amp;gt;
-     &amp;lt;/register&amp;gt; 
-        &amp;lt;register&amp;gt;     
-         &amp;lt;name&amp;gt;CLEAR_BITS&amp;lt;/name&amp;gt;  
-         &amp;lt;displayName&amp;gt;Outclear&amp;lt;/displayName&amp;gt;
-         &amp;lt;description&amp;gt;You can use the outclear register to clear individual bits of the output port. For example, writing 0x08 to the outclear register clears bit 3 of the output port. This register is only present when the option Enable individual bit set/clear output register is turned on.&amp;lt;/description&amp;gt;
-         &amp;lt;addressOffset&amp;gt;0x14&amp;lt;/addressOffset&amp;gt;
-         &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-         &amp;lt;access&amp;gt;write-only&amp;lt;/access&amp;gt;
-         &amp;lt;resetValue&amp;gt;0x0&amp;lt;/resetValue&amp;gt;
-         &amp;lt;resetMask&amp;gt;0xffffffff&amp;lt;/resetMask&amp;gt; 
-         &amp;lt;fields&amp;gt;
-           &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;outclear&amp;lt;/name&amp;gt;
-            &amp;lt;description&amp;gt;Specifies which output bit to clear.&amp;lt;/description&amp;gt;
-            &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-            &amp;lt;bitWidth&amp;gt;32&amp;lt;/bitWidth&amp;gt;
-            &amp;lt;access&amp;gt;write-only&amp;lt;/access&amp;gt;
-        &amp;lt;/field&amp;gt;
-       &amp;lt;/fields&amp;gt;
-     &amp;lt;/register&amp;gt;            
-    &amp;lt;/registers&amp;gt;
-   &amp;lt;/peripheral&amp;gt;
-  &amp;lt;/peripherals&amp;gt;
-&amp;lt;/device&amp;gt; &lt;/cmsisSrcFileContents&gt;
-                    &lt;addressGroup&gt;&lt;/addressGroup&gt;
-                    &lt;cmsisVars/&gt;
-                &lt;/cmsisInfo&gt;
             &lt;/interface&gt;
             &lt;interface&gt;
                 &lt;name&gt;external_connection&lt;/name&gt;
@@ -3575,7 +3223,7 @@ https://fpgasoftware.intel.com/eula.-->
     &lt;originalModuleInfo&gt;
         &lt;className&gt;altera_iopll&lt;/className&gt;
         &lt;version&gt;20.0.0&lt;/version&gt;
-        &lt;displayName&gt;IOPLL Intel FPGA IP&lt;/displayName&gt;
+        &lt;displayName&gt;IOPLL FPGA IP&lt;/displayName&gt;
     &lt;/originalModuleInfo&gt;
     &lt;systemInfoParameterDescriptors&gt;
         &lt;descriptors&gt;
@@ -3594,8 +3242,9 @@ https://fpgasoftware.intel.com/eula.-->
             &lt;descriptor&gt;
                 &lt;parameterDefaultValue&gt;&lt;/parameterDefaultValue&gt;
                 &lt;parameterName&gt;system_info_device_speed_grade&lt;/parameterName&gt;
-                &lt;parameterType&gt;java.lang.String&lt;/parameterType&gt;
-                &lt;systemInfotype&gt;DEVICE_SPEEDGRADE&lt;/systemInfotype&gt;
+                &lt;parameterType&gt;[Ljava.lang.String;&lt;/parameterType&gt;
+                &lt;systemInfoArgs&gt;REAL_SPEED_GRADE&lt;/systemInfoArgs&gt;
+                &lt;systemInfotype&gt;DEVICE_INFO&lt;/systemInfotype&gt;
             &lt;/descriptor&gt;
             &lt;descriptor&gt;
                 &lt;parameterDefaultValue&gt;&lt;/parameterDefaultValue&gt;
@@ -3852,7 +3501,7 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
@@ -4629,6 +4278,10 @@ https://fpgasoftware.intel.com/eula.-->
                         &lt;key&gt;enableConcurrentSubordinateAccess&lt;/key&gt;
                         &lt;value&gt;0&lt;/value&gt;
                     &lt;/entry&gt;
+                    &lt;entry&gt;
+                        &lt;key&gt;optimizedReadsWithBE&lt;/key&gt;
+                        &lt;value&gt;0&lt;/value&gt;
+                    &lt;/entry&gt;
                 &lt;/parameterValueMap&gt;
             &lt;/parameters&gt;
         &lt;/interface&gt;
@@ -4714,12 +4367,12 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
       </altera:module>
-      <altera:module altera:enabled="false" altera:auto_export="false">
+      <altera:module altera:enabled="true" altera:auto_export="false">
         <altera:entity_info>
           <ipxact:vendor>Altera Corporation</ipxact:vendor>
           <ipxact:library>jtag_uart</ipxact:library>
@@ -5251,8 +4904,8 @@ https://fpgasoftware.intel.com/eula.-->
     &lt;/boundary&gt;
     &lt;originalModuleInfo&gt;
         &lt;className&gt;altera_avalon_jtag_uart&lt;/className&gt;
-        &lt;version&gt;19.3.0&lt;/version&gt;
-        &lt;displayName&gt;JTAG UART Intel FPGA IP&lt;/displayName&gt;
+        &lt;version&gt;19.3.1&lt;/version&gt;
+        &lt;displayName&gt;JTAG UART Altera FPGA IP&lt;/displayName&gt;
     &lt;/originalModuleInfo&gt;
     &lt;systemInfoParameterDescriptors&gt;
         &lt;descriptors&gt;
@@ -5939,7 +5592,7 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
@@ -6310,331 +5963,6 @@ https://fpgasoftware.intel.com/eula.-->
                         &lt;/entry&gt;
                     &lt;/parameterValueMap&gt;
                 &lt;/parameters&gt;
-                &lt;cmsisInfo&gt;
-                    &lt;cmsisSrcFileContents&gt;&amp;lt;?xml version="1.0" encoding="utf-8"?&amp;gt;
-&amp;lt;device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD_Schema_1_1.xsd"&amp;gt;
-  &amp;lt;peripherals&amp;gt;
-    &amp;lt;peripheral&amp;gt;
-      &amp;lt;baseAddress&amp;gt;0x00000000&amp;lt;/baseAddress&amp;gt;
-      &amp;lt;name&amp;gt;intel_lw_uart&amp;lt;/name&amp;gt;
-      &amp;lt;registers&amp;gt;
-        &amp;lt;register&amp;gt;
-          &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x0&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;displayName&amp;gt;rxdata&amp;lt;/displayName&amp;gt;
-          &amp;lt;name&amp;gt;rxdata&amp;lt;/name&amp;gt;
-          &amp;lt;resetValue&amp;gt;0xffffffff&amp;lt;/resetValue&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[8:0]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;The rxdata register holds data received via the RXD input.&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;rxdata&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-          &amp;lt;access&amp;gt;write-only&amp;lt;/access&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x1&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;displayName&amp;gt;txdata&amp;lt;/displayName&amp;gt;
-          &amp;lt;name&amp;gt;txdata&amp;lt;/name&amp;gt;
-          &amp;lt;resetValue&amp;gt;0xffffffff&amp;lt;/resetValue&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;write-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[8:0]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;The txdata register holds data from AVMM writedata before it is being shifted by shift register.&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;txdata&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-          &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x2&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;displayName&amp;gt;status&amp;lt;/displayName&amp;gt;
-          &amp;lt;name&amp;gt;status&amp;lt;/name&amp;gt;
-          &amp;lt;resetValue&amp;gt;0xffffffff&amp;lt;/resetValue&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[0:0]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Parity error&amp;lt;/description&amp;gt;
-              &amp;lt;modifiedWriteValues&amp;gt;writeToClear&amp;lt;/modifiedWriteValues&amp;gt;
-              &amp;lt;name&amp;gt;pe&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[1:1]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Framing error&amp;lt;/description&amp;gt;
-              &amp;lt;modifiedWriteValues&amp;gt;writeToClear&amp;lt;/modifiedWriteValues&amp;gt;
-              &amp;lt;name&amp;gt;fe&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[2:2]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Break detect&amp;lt;/description&amp;gt;
-              &amp;lt;modifiedWriteValues&amp;gt;writeToClear&amp;lt;/modifiedWriteValues&amp;gt;
-              &amp;lt;name&amp;gt;brk&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[3:3]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;RXFIFO overrun error&amp;lt;/description&amp;gt;
-              &amp;lt;modifiedWriteValues&amp;gt;writeToClear&amp;lt;/modifiedWriteValues&amp;gt;
-              &amp;lt;name&amp;gt;roe&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[4:4]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;TXFIFO overrun error&amp;lt;/description&amp;gt;
-              &amp;lt;modifiedWriteValues&amp;gt;writeToClear&amp;lt;/modifiedWriteValues&amp;gt;
-              &amp;lt;name&amp;gt;toe&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[5:5]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Transmit data empty&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;tmt&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[6:6]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Transmit ready&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;trdy&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[7:7]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Receive character ready&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;rrdy&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[8:8]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Exception&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;e&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[10:10]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Change in clear to send (CTS) signal&amp;lt;/description&amp;gt;
-              &amp;lt;modifiedWriteValues&amp;gt;writeToClear&amp;lt;/modifiedWriteValues&amp;gt;
-              &amp;lt;name&amp;gt;dcts&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[11:11]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Clear-to-send (CTS) signal&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;cts&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[12:12]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;End of packet encountered&amp;lt;/description&amp;gt;
-              &amp;lt;modifiedWriteValues&amp;gt;writeToClear&amp;lt;/modifiedWriteValues&amp;gt;
-              &amp;lt;name&amp;gt;eop&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[13:13]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;RXFIFO underrun error&amp;lt;/description&amp;gt;
-              &amp;lt;modifiedWriteValues&amp;gt;writeToClear&amp;lt;/modifiedWriteValues&amp;gt;
-              &amp;lt;name&amp;gt;rue&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[14:14]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;RXFIFO full&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;rfull&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[15:15]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;RXFIFO almost full&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;rafull&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-          &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x3&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;displayName&amp;gt;control&amp;lt;/displayName&amp;gt;
-          &amp;lt;name&amp;gt;control&amp;lt;/name&amp;gt;
-          &amp;lt;resetValue&amp;gt;0xffffffff&amp;lt;/resetValue&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[0:0]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a parity error&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;ipe&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[1:1]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a framing error&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;ife&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[2:2]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a break detect&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;ibrk&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[3:3]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a RXFIFO overrun error&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;iroe&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[4:4]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a TXFIFO overrun error&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;itoe&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[5:5]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a transmit data empty&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;itmt&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[6:6]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a transmission ready&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;itrdy&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[7:7]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a receive character ready&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;irrdy&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[8:8]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for an exception&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;ie&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[9:9]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Transmit break&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;trbk&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[10:10]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for a change in CTS signal&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;idcts&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[11:11]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Request to send (RTS) signal&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;rts&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[12:12]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for end-of-packet condition&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;ieop&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[13:13]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for RXFIFO underrun error&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;ieop&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[14:14]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for RXFIFO full&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;irfull&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[15:15]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Enable interrupt for RXFIFO almost full&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;irafull&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-          &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x4&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;displayName&amp;gt;divisor&amp;lt;/displayName&amp;gt;
-          &amp;lt;name&amp;gt;divisor&amp;lt;/name&amp;gt;
-          &amp;lt;resetValue&amp;gt;0xffffffff&amp;lt;/resetValue&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[15:0]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;The value in the divisor register is used to generate the baud rate clock&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;baud_rate_divisor&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-          &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x5&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;displayName&amp;gt;endofpacket&amp;lt;/displayName&amp;gt;
-          &amp;lt;name&amp;gt;endofpacket&amp;lt;/name&amp;gt;
-          &amp;lt;resetValue&amp;gt;0xffffffff&amp;lt;/resetValue&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-write&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[8:0]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;The value in the endofpacket register determines the end-of-packet character for variable-length DMA transactions&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;end_of_packet_value&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt;
-        &amp;lt;register&amp;gt;
-          &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x6&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;displayName&amp;gt;rxfifo_lvl&amp;lt;/displayName&amp;gt;
-          &amp;lt;name&amp;gt;rxfifo_lvl&amp;lt;/name&amp;gt;
-          &amp;lt;resetValue&amp;gt;0xffffffff&amp;lt;/resetValue&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[10:0]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Shows the current number of words stored in RXFIFO.&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;rxfifo_lvl&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt;
-       &amp;lt;register&amp;gt;
-          &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-          &amp;lt;addressOffset&amp;gt;0x7&amp;lt;/addressOffset&amp;gt;
-          &amp;lt;displayName&amp;gt;txfifo_lvl&amp;lt;/displayName&amp;gt;
-          &amp;lt;name&amp;gt;txfifo_lvl&amp;lt;/name&amp;gt;
-          &amp;lt;resetValue&amp;gt;0xffffffff&amp;lt;/resetValue&amp;gt;
-          &amp;lt;size&amp;gt;16&amp;lt;/size&amp;gt;
-          &amp;lt;fields&amp;gt;
-            &amp;lt;field&amp;gt;
-              &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-              &amp;lt;bitRange&amp;gt;[10:0]&amp;lt;/bitRange&amp;gt;
-              &amp;lt;description&amp;gt;Shows the current number of words stored in TXFIFO.&amp;lt;/description&amp;gt;
-              &amp;lt;name&amp;gt;txfifo_lvl&amp;lt;/name&amp;gt;
-            &amp;lt;/field&amp;gt;
-          &amp;lt;/fields&amp;gt;
-        &amp;lt;/register&amp;gt;
-      &amp;lt;/registers&amp;gt;
-    &amp;lt;/peripheral&amp;gt;
-  &amp;lt;/peripherals&amp;gt;
-&amp;lt;/device&amp;gt;&lt;/cmsisSrcFileContents&gt;
-                    &lt;addressGroup&gt;&lt;/addressGroup&gt;
-                    &lt;cmsisVars/&gt;
-                &lt;/cmsisInfo&gt;
             &lt;/interface&gt;
             &lt;interface&gt;
                 &lt;name&gt;external_connection&lt;/name&gt;
@@ -10742,7 +10070,7 @@ https://fpgasoftware.intel.com/eula.-->
                     &lt;consumedSystemInfos&gt;
                         &lt;entry&gt;
                             &lt;key&gt;ADDRESS_MAP&lt;/key&gt;
-                            &lt;value&gt;&amp;lt;address-map&amp;gt;&amp;lt;slave name='onchip_memory.s1' start='0x0' end='0x40000' datawidth='32' /&amp;gt;&amp;lt;slave name='sdm_mailbox_client.avmm' start='0x40040' end='0x40080' datawidth='32' /&amp;gt;&amp;lt;slave name='pwm24x3.avalon_s1' start='0x40080' end='0x400C0' datawidth='32' /&amp;gt;&amp;lt;slave name='lw_uart.s1' start='0x400C0' end='0x400E0' datawidth='16' /&amp;gt;&amp;lt;slave name='RTI_2S.s1' start='0x400E0' end='0x40100' datawidth='16' /&amp;gt;&amp;lt;slave name='dip_sw.s1' start='0x40110' end='0x40120' datawidth='32' /&amp;gt;&amp;lt;slave name='sys_id.control_slave' start='0x40120' end='0x40128' datawidth='32' /&amp;gt;&amp;lt;slave name='niosv_m_0.timer_sw_agent' start='0x40140' end='0x40180' datawidth='32' /&amp;gt;&amp;lt;slave name='niosv_m_0.dm_agent' start='0x50000' end='0x60000' datawidth='32' /&amp;gt;&amp;lt;slave name='mm_ccb_0.s0' start='0x100000' end='0x140000' datawidth='32' /&amp;gt;&amp;lt;/address-map&amp;gt;&lt;/value&gt;
+                            &lt;value&gt;&amp;lt;address-map&amp;gt;&amp;lt;slave name='onchip_memory.s1' start='0x0' end='0x40000' datawidth='32' /&amp;gt;&amp;lt;slave name='sdm_mailbox_client.avmm' start='0x40040' end='0x40080' datawidth='32' /&amp;gt;&amp;lt;slave name='pwm24x3.avalon_s1' start='0x40080' end='0x400C0' datawidth='32' /&amp;gt;&amp;lt;slave name='lw_uart.s1' start='0x400C0' end='0x400E0' datawidth='16' /&amp;gt;&amp;lt;slave name='RTI_2S.s1' start='0x400E0' end='0x40100' datawidth='16' /&amp;gt;&amp;lt;slave name='jtag_uart.avalon_jtag_slave' start='0x40108' end='0x40110' datawidth='32' /&amp;gt;&amp;lt;slave name='dip_sw.s1' start='0x40110' end='0x40120' datawidth='32' /&amp;gt;&amp;lt;slave name='sys_id.control_slave' start='0x40120' end='0x40128' datawidth='32' /&amp;gt;&amp;lt;slave name='niosv_m_0.timer_sw_agent' start='0x40140' end='0x40180' datawidth='32' /&amp;gt;&amp;lt;slave name='niosv_m_0.dm_agent' start='0x50000' end='0x60000' datawidth='32' /&amp;gt;&amp;lt;slave name='mm_ccb_0.s0' start='0x100000' end='0x140000' datawidth='32' /&amp;gt;&amp;lt;/address-map&amp;gt;&lt;/value&gt;
                         &lt;/entry&gt;
                     &lt;/consumedSystemInfos&gt;
                 &lt;/value&gt;
@@ -10789,7 +10117,7 @@ https://fpgasoftware.intel.com/eula.-->
                     &lt;consumedSystemInfos&gt;
                         &lt;entry&gt;
                             &lt;key&gt;INTERRUPTS_USED&lt;/key&gt;
-                            &lt;value&gt;29&lt;/value&gt;
+                            &lt;value&gt;63&lt;/value&gt;
                         &lt;/entry&gt;
                     &lt;/consumedSystemInfos&gt;
                 &lt;/value&gt;
@@ -13288,7 +12616,7 @@ https://fpgasoftware.intel.com/eula.-->
           </ipxact:parameters>
         </altera:altera_module_parameters>
       </altera:module>
-      <altera:module altera:enabled="false" altera:auto_export="false">
+      <altera:module altera:enabled="true" altera:auto_export="false">
         <altera:entity_info>
           <ipxact:vendor>Altera Corporation</ipxact:vendor>
           <ipxact:library>pb</ipxact:library>
@@ -13870,8 +13198,8 @@ https://fpgasoftware.intel.com/eula.-->
     &lt;/boundary&gt;
     &lt;originalModuleInfo&gt;
         &lt;className&gt;altera_avalon_pio&lt;/className&gt;
-        &lt;version&gt;19.2.3&lt;/version&gt;
-        &lt;displayName&gt;PIO (Parallel I/O) Intel FPGA IP&lt;/displayName&gt;
+        &lt;version&gt;19.2.4&lt;/version&gt;
+        &lt;displayName&gt;PIO (Parallel I/O) Altera FPGA IP&lt;/displayName&gt;
     &lt;/originalModuleInfo&gt;
     &lt;systemInfoParameterDescriptors&gt;
         &lt;descriptors&gt;
@@ -13900,7 +13228,7 @@ https://fpgasoftware.intel.com/eula.-->
                     &lt;consumedSystemInfos&gt;
                         &lt;entry&gt;
                             &lt;key&gt;CLOCK_RATE&lt;/key&gt;
-                            &lt;value&gt;100000000&lt;/value&gt;
+                            &lt;value&gt;25000000&lt;/value&gt;
                         &lt;/entry&gt;
                     &lt;/consumedSystemInfos&gt;
                 &lt;/value&gt;
@@ -14595,7 +13923,7 @@ https://fpgasoftware.intel.com/eula.-->
         &lt;/entry&gt;
         &lt;entry&gt;
             &lt;key&gt;embeddedsw.CMacro.FREQ&lt;/key&gt;
-            &lt;value&gt;100000000&lt;/value&gt;
+            &lt;value&gt;25000000&lt;/value&gt;
         &lt;/entry&gt;
         &lt;entry&gt;
             &lt;key&gt;embeddedsw.CMacro.HAS_IN&lt;/key&gt;
@@ -14668,7 +13996,7 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
@@ -15730,7 +15058,7 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
@@ -16087,7 +15415,7 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
@@ -16154,7 +15482,7 @@ https://fpgasoftware.intel.com/eula.-->
     &lt;originalModuleInfo&gt;
         &lt;className&gt;intel_user_rst_clkgate&lt;/className&gt;
         &lt;version&gt;1.0.1&lt;/version&gt;
-        &lt;displayName&gt;Agilex Reset Release Intel FPGA IP&lt;/displayName&gt;
+        &lt;displayName&gt;Reset Release IP&lt;/displayName&gt;
     &lt;/originalModuleInfo&gt;
     &lt;systemInfoParameterDescriptors&gt;
         &lt;descriptors&gt;
@@ -16295,7 +15623,7 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
@@ -17635,68 +16963,6 @@ https://fpgasoftware.intel.com/eula.-->
                         &lt;/entry&gt;
                     &lt;/parameterValueMap&gt;
                 &lt;/parameters&gt;
-                &lt;cmsisInfo&gt;
-                    &lt;cmsisSrcFileContents&gt;&amp;lt;?xml version="1.0" encoding="utf-8"?&amp;gt;    
-&amp;lt;device schemaVersion="1.1" xmlns:xs="http://www.w3.org/2001/XMLSchema-instance" xs:noNamespaceSchemaLocation="CMSIS-SVD_Schema_1_1.xsd" &amp;gt;
-  &amp;lt;peripherals&amp;gt;
-    &amp;lt;peripheral&amp;gt;
-      &amp;lt;name&amp;gt;altera_avalon_sysid&amp;lt;/name&amp;gt;&amp;lt;baseAddress&amp;gt;0x00000000&amp;lt;/baseAddress&amp;gt; 
-      &amp;lt;addressBlock&amp;gt;
-        &amp;lt;offset&amp;gt;0x0&amp;lt;/offset&amp;gt;
-        &amp;lt;size&amp;gt;8&amp;lt;/size&amp;gt;
-        &amp;lt;usage&amp;gt;registers&amp;lt;/usage&amp;gt;
-      &amp;lt;/addressBlock&amp;gt;
-      &amp;lt;registers&amp;gt;
-        &amp;lt;register&amp;gt;     
-         &amp;lt;name&amp;gt;ID&amp;lt;/name&amp;gt;  
-         &amp;lt;displayName&amp;gt;System ID&amp;lt;/displayName&amp;gt;
-            &amp;lt;description&amp;gt;A unique 32-bit value that is based on the contents of the QSys system. The id is similar to a check-sum value; QSys systems with different components, different configuration options, or both, produce different id values.&amp;lt;/description&amp;gt;
-         &amp;lt;addressOffset&amp;gt;0x0&amp;lt;/addressOffset&amp;gt;
-         &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-         &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-         &amp;lt;resetValue&amp;gt;${sysid_id_value}&amp;lt;/resetValue&amp;gt;
-         &amp;lt;resetMask&amp;gt;0xffffffff&amp;lt;/resetMask&amp;gt; 
-         &amp;lt;fields&amp;gt;
-           &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;id&amp;lt;/name&amp;gt;
-            &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-            &amp;lt;bitWidth&amp;gt;32&amp;lt;/bitWidth&amp;gt;
-            &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-        &amp;lt;/field&amp;gt;
-       &amp;lt;/fields&amp;gt;
-     &amp;lt;/register&amp;gt; 
-        &amp;lt;register&amp;gt;
-         &amp;lt;name&amp;gt;TIMESTAMP&amp;lt;/name&amp;gt;  
-         &amp;lt;displayName&amp;gt;Time stamp&amp;lt;/displayName&amp;gt;
-         &amp;lt;description&amp;gt;A unique 32-bit value that is based on the system generation time. The value is equivalent to the number of seconds after Jan. 1, 1970.&amp;lt;/description&amp;gt;
-         &amp;lt;addressOffset&amp;gt;0x4&amp;lt;/addressOffset&amp;gt;
-         &amp;lt;size&amp;gt;32&amp;lt;/size&amp;gt;
-         &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-         &amp;lt;resetValue&amp;gt;${sysid_timestamp_value}&amp;lt;/resetValue&amp;gt;
-         &amp;lt;resetMask&amp;gt;0xffffffff&amp;lt;/resetMask&amp;gt; 
-         &amp;lt;fields&amp;gt;
-           &amp;lt;field&amp;gt;&amp;lt;name&amp;gt;timestamp&amp;lt;/name&amp;gt;
-            &amp;lt;bitOffset&amp;gt;0x0&amp;lt;/bitOffset&amp;gt;
-            &amp;lt;bitWidth&amp;gt;32&amp;lt;/bitWidth&amp;gt;
-            &amp;lt;access&amp;gt;read-only&amp;lt;/access&amp;gt;
-        &amp;lt;/field&amp;gt;
-       &amp;lt;/fields&amp;gt;
-     &amp;lt;/register&amp;gt;            
-    &amp;lt;/registers&amp;gt;
-   &amp;lt;/peripheral&amp;gt;
-  &amp;lt;/peripherals&amp;gt;
-&amp;lt;/device&amp;gt; &lt;/cmsisSrcFileContents&gt;
-                    &lt;addressGroup&gt;&lt;/addressGroup&gt;
-                    &lt;cmsisVars&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;sysid_timestamp_value&lt;/key&gt;
-                            &lt;value&gt;0x0&lt;/value&gt;
-                        &lt;/entry&gt;
-                        &lt;entry&gt;
-                            &lt;key&gt;sysid_id_value&lt;/key&gt;
-                            &lt;value&gt;0xae500001&lt;/value&gt;
-                        &lt;/entry&gt;
-                    &lt;/cmsisVars&gt;
-                &lt;/cmsisInfo&gt;
             &lt;/interface&gt;
         &lt;/interfaces&gt;
     &lt;/boundary&gt;
@@ -18558,7 +17824,7 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:parameter parameterId="transformParameters" type="string">
               <ipxact:name>transformParameters</ipxact:name>
               <ipxact:displayName>Transform Parameters</ipxact:displayName>
-              <ipxact:value></ipxact:value>
+              <ipxact:value>&lt;transformParameterDescriptorDefinitionList/&gt;</ipxact:value>
             </ipxact:parameter>
           </ipxact:parameters>
         </altera:altera_module_parameters>
@@ -18882,7 +18148,7 @@ https://fpgasoftware.intel.com/eula.-->
       </altera:connection>
       <altera:connection altera:kind="avalon" altera:version="25.1" altera:start="jtag_master.master" altera:end="sys_id.control_slave">
         <altera:connection_parameter altera:parameter_name="arbitrationPriority" altera:parameter_value="1"></altera:connection_parameter>
-        <altera:connection_parameter altera:parameter_name="baseAddress" altera:parameter_value="0x00040120"></altera:connection_parameter>
+        <altera:connection_parameter altera:parameter_name="baseAddress" altera:parameter_value="0x00050120"></altera:connection_parameter>
         <altera:connection_parameter altera:parameter_name="defaultConnection" altera:parameter_value="false"></altera:connection_parameter>
         <altera:connection_parameter altera:parameter_name="domainAlias" altera:parameter_value=""></altera:connection_parameter>
         <altera:connection_parameter altera:parameter_name="qsys_mm.burstAdapterImplementation" altera:parameter_value="GENERIC_CONVERTER"></altera:connection_parameter>
@@ -19043,19 +18309,22 @@ https://fpgasoftware.intel.com/eula.-->
       <altera:connection altera:kind="clock" altera:version="25.1" altera:start="iopll.outclk0" altera:end="sysclk_bridge.in_clk"></altera:connection>
       <altera:connection altera:kind="clock" altera:version="25.1" altera:start="iopll.outclk0" altera:end="mm_ccb_0.s0_clk"></altera:connection>
       <altera:connection altera:kind="interrupt" altera:version="25.1" altera:start="niosv_m_0.platform_irq_rx" altera:end="pwm24x3.interrupt_sender">
-        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="3"></altera:connection_parameter>
+        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="0"></altera:connection_parameter>
       </altera:connection>
       <altera:connection altera:kind="interrupt" altera:version="25.1" altera:start="niosv_m_0.platform_irq_rx" altera:end="jtag_uart.irq">
-        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="0"></altera:connection_parameter>
+        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="1"></altera:connection_parameter>
       </altera:connection>
       <altera:connection altera:kind="interrupt" altera:version="25.1" altera:start="niosv_m_0.platform_irq_rx" altera:end="sdm_mailbox_client.irq">
         <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="2"></altera:connection_parameter>
       </altera:connection>
       <altera:connection altera:kind="interrupt" altera:version="25.1" altera:start="niosv_m_0.platform_irq_rx" altera:end="RTI_2S.irq">
-        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="4"></altera:connection_parameter>
+        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="3"></altera:connection_parameter>
       </altera:connection>
       <altera:connection altera:kind="interrupt" altera:version="25.1" altera:start="niosv_m_0.platform_irq_rx" altera:end="lw_uart.irq">
-        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="0"></altera:connection_parameter>
+        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="4"></altera:connection_parameter>
+      </altera:connection>
+      <altera:connection altera:kind="interrupt" altera:version="25.1" altera:start="niosv_m_0.platform_irq_rx" altera:end="pb.irq">
+        <altera:connection_parameter altera:parameter_name="irqNumber" altera:parameter_value="5"></altera:connection_parameter>
       </altera:connection>
       <altera:connection altera:kind="reset" altera:version="25.1" altera:start="reset_release.ninit_done" altera:end="jtag_master.clk_reset"></altera:connection>
       <altera:connection altera:kind="reset" altera:version="25.1" altera:start="reset_release.ninit_done" altera:end="sdm_mailbox_client.in_reset"></altera:connection>
@@ -19092,7 +18361,7 @@ https://fpgasoftware.intel.com/eula.-->
       <altera:interface_mapping altera:name="mm_ccb_0_m0" altera:internal="mm_ccb_0.m0" altera:type="avalon" altera:dir="start"></altera:interface_mapping>
       <altera:interface_mapping altera:name="mm_ccb_0_m0_clk" altera:internal="mm_ccb_0.m0_clk" altera:type="clock" altera:dir="end"></altera:interface_mapping>
       <altera:interface_mapping altera:name="mm_ccb_0_m0_reset" altera:internal="mm_ccb_0.m0_reset" altera:type="reset" altera:dir="end"></altera:interface_mapping>
-      <altera:interface_mapping altera:name="pb" altera:internal="pb.external_connection"></altera:interface_mapping>
+      <altera:interface_mapping altera:name="pb" altera:internal="pb.external_connection" altera:type="conduit" altera:dir="end"></altera:interface_mapping>
       <altera:interface_mapping altera:name="pwm_out" altera:internal="pwm24x3.conduit_end" altera:type="conduit" altera:dir="end"></altera:interface_mapping>
       <altera:interface_mapping altera:name="reset_n" altera:internal="reset_bridge.in_reset" altera:type="reset" altera:dir="end"></altera:interface_mapping>
       <altera:interface_mapping altera:name="sysclk" altera:internal="sysclk_bridge.out_clk" altera:type="clock" altera:dir="start"></altera:interface_mapping>
@@ -19118,11 +18387,19 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
           </ipxact:busInterface>
           <ipxact:busInterface>
+            <ipxact:name>mm_ccb_0.s0</ipxact:name>
+            <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
+          </ipxact:busInterface>
+          <ipxact:busInterface>
             <ipxact:name>onchip_memory.s1</ipxact:name>
             <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
           </ipxact:busInterface>
           <ipxact:busInterface>
             <ipxact:name>dip_sw.s1</ipxact:name>
+            <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
+          </ipxact:busInterface>
+          <ipxact:busInterface>
+            <ipxact:name>pb.s1</ipxact:name>
             <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
           </ipxact:busInterface>
           <ipxact:busInterface>
@@ -19134,10 +18411,6 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
           </ipxact:busInterface>
           <ipxact:busInterface>
-            <ipxact:name>mm_ccb_0.s0</ipxact:name>
-            <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
-          </ipxact:busInterface>
-          <ipxact:busInterface>
             <ipxact:name>jtag_master.master</ipxact:name>
             <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
             <ipxact:master>
@@ -19145,6 +18418,11 @@ https://fpgasoftware.intel.com/eula.-->
                 <ipxact:baseAddress>0x0004_0080</ipxact:baseAddress>
               </ipxact:addressSpaceRef>
             </ipxact:master>
+          </ipxact:busInterface>
+          <ipxact:busInterface>
+            <ipxact:name>mm_ccb_0.m0</ipxact:name>
+            <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
+            <ipxact:master></ipxact:master>
           </ipxact:busInterface>
           <ipxact:busInterface>
             <ipxact:name>niosv_m_0.dm_agent</ipxact:name>
@@ -19164,6 +18442,10 @@ https://fpgasoftware.intel.com/eula.-->
             </ipxact:master>
           </ipxact:busInterface>
           <ipxact:busInterface>
+            <ipxact:name>jtag_uart.avalon_jtag_slave</ipxact:name>
+            <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
+          </ipxact:busInterface>
+          <ipxact:busInterface>
             <ipxact:name>pwm24x3.avalon_s1</ipxact:name>
             <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
           </ipxact:busInterface>
@@ -19177,6 +18459,10 @@ https://fpgasoftware.intel.com/eula.-->
           </ipxact:busInterface>
           <ipxact:busInterface>
             <ipxact:name>niosv_m_0.dm_agent</ipxact:name>
+            <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
+          </ipxact:busInterface>
+          <ipxact:busInterface>
+            <ipxact:name>mm_ccb_0.s0</ipxact:name>
             <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
           </ipxact:busInterface>
           <ipxact:busInterface>
@@ -19200,22 +18486,13 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
           </ipxact:busInterface>
           <ipxact:busInterface>
-            <ipxact:name>mm_ccb_0.s0</ipxact:name>
-            <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
-          </ipxact:busInterface>
-          <ipxact:busInterface>
             <ipxact:name>niosv_m_0.data_manager</ipxact:name>
             <ipxact:busType vendor="intel" library="intel" name="axi4lite" version="25.1"></ipxact:busType>
             <ipxact:master>
               <ipxact:addressSpaceRef addressSpaceRef="niosv_m_0.data_manager">
-                <ipxact:baseAddress>0x0004_0080</ipxact:baseAddress>
+                <ipxact:baseAddress>0x0004_0108</ipxact:baseAddress>
               </ipxact:addressSpaceRef>
             </ipxact:master>
-          </ipxact:busInterface>
-          <ipxact:busInterface>
-            <ipxact:name>mm_ccb_0.m0</ipxact:name>
-            <ipxact:busType vendor="intel" library="intel" name="avalon" version="25.1"></ipxact:busType>
-            <ipxact:master></ipxact:master>
           </ipxact:busInterface>
         </ipxact:busInterfaces>
         <ipxact:addressSpaces>
@@ -19234,8 +18511,13 @@ https://fpgasoftware.intel.com/eula.-->
               </ipxact:segment>
               <ipxact:segment>
                 <ipxact:name>sys_id.control_slave</ipxact:name>
-                <ipxact:addressOffset>0x0004_0120</ipxact:addressOffset>
+                <ipxact:addressOffset>0x0005_0120</ipxact:addressOffset>
                 <ipxact:range>0x0000_0008</ipxact:range>
+              </ipxact:segment>
+              <ipxact:segment>
+                <ipxact:name>mm_ccb_0.s0</ipxact:name>
+                <ipxact:addressOffset>0x0010_0000</ipxact:addressOffset>
+                <ipxact:range>0x0004_0000</ipxact:range>
               </ipxact:segment>
               <ipxact:segment>
                 <ipxact:name>onchip_memory.s1</ipxact:name>
@@ -19248,6 +18530,11 @@ https://fpgasoftware.intel.com/eula.-->
                 <ipxact:range>0x0000_0010</ipxact:range>
               </ipxact:segment>
               <ipxact:segment>
+                <ipxact:name>pb.s1</ipxact:name>
+                <ipxact:addressOffset>0x0004_0120</ipxact:addressOffset>
+                <ipxact:range>0x0000_0010</ipxact:range>
+              </ipxact:segment>
+              <ipxact:segment>
                 <ipxact:name>RTI_2S.s1</ipxact:name>
                 <ipxact:addressOffset>0x0004_00e0</ipxact:addressOffset>
                 <ipxact:range>0x0000_0020</ipxact:range>
@@ -19256,11 +18543,6 @@ https://fpgasoftware.intel.com/eula.-->
                 <ipxact:name>lw_uart.s1</ipxact:name>
                 <ipxact:addressOffset>0x0004_00c0</ipxact:addressOffset>
                 <ipxact:range>0x0000_0020</ipxact:range>
-              </ipxact:segment>
-              <ipxact:segment>
-                <ipxact:name>mm_ccb_0.s0</ipxact:name>
-                <ipxact:addressOffset>0x0010_0000</ipxact:addressOffset>
-                <ipxact:range>0x0004_0000</ipxact:range>
               </ipxact:segment>
             </ipxact:segments>
           </ipxact:addressSpace>
@@ -19283,6 +18565,11 @@ https://fpgasoftware.intel.com/eula.-->
             <ipxact:name>niosv_m_0.data_manager</ipxact:name>
             <ipxact:segments>
               <ipxact:segment>
+                <ipxact:name>jtag_uart.avalon_jtag_slave</ipxact:name>
+                <ipxact:addressOffset>0x0004_0108</ipxact:addressOffset>
+                <ipxact:range>0x0000_0008</ipxact:range>
+              </ipxact:segment>
+              <ipxact:segment>
                 <ipxact:name>pwm24x3.avalon_s1</ipxact:name>
                 <ipxact:addressOffset>0x0004_0080</ipxact:addressOffset>
                 <ipxact:range>0x0000_0040</ipxact:range>
@@ -19301,6 +18588,11 @@ https://fpgasoftware.intel.com/eula.-->
                 <ipxact:name>niosv_m_0.dm_agent</ipxact:name>
                 <ipxact:addressOffset>0x0005_0000</ipxact:addressOffset>
                 <ipxact:range>0x0001_0000</ipxact:range>
+              </ipxact:segment>
+              <ipxact:segment>
+                <ipxact:name>mm_ccb_0.s0</ipxact:name>
+                <ipxact:addressOffset>0x0010_0000</ipxact:addressOffset>
+                <ipxact:range>0x0004_0000</ipxact:range>
               </ipxact:segment>
               <ipxact:segment>
                 <ipxact:name>onchip_memory.s1</ipxact:name>
@@ -19326,11 +18618,6 @@ https://fpgasoftware.intel.com/eula.-->
                 <ipxact:name>niosv_m_0.timer_sw_agent</ipxact:name>
                 <ipxact:addressOffset>0x0004_0140</ipxact:addressOffset>
                 <ipxact:range>0x0000_0040</ipxact:range>
-              </ipxact:segment>
-              <ipxact:segment>
-                <ipxact:name>mm_ccb_0.s0</ipxact:name>
-                <ipxact:addressOffset>0x0010_0000</ipxact:addressOffset>
-                <ipxact:range>0x0004_0000</ipxact:range>
               </ipxact:segment>
             </ipxact:segments>
           </ipxact:addressSpace>
