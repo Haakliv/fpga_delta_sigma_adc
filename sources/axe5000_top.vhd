@@ -16,22 +16,19 @@ entity axe5000_top is
   );
   port(
     -- Clock and Reset
-    CLK_25M_C   : in  std_logic;
-    CPU_RESETn  : in  std_logic;
+    CLK_25M_C  : in  std_logic;
+    CPU_RESETn : in  std_logic;
     -- UART
-    UART_TX     : out std_logic;
-    UART_RX     : in  std_logic;
+    UART_TX    : out std_logic;
+    UART_RX    : in  std_logic;
     -- DIP Switches
-    DIP_SW      : in  std_logic_vector(1 downto 0);
-    -- PWM outputs
-    PWM_OUT     : out std_logic_vector(2 downto 0);
+    DIP_SW     : in  std_logic_vector(1 downto 0);
     -- Delta-Sigma ADC (differential LVDS input)
-    ANALOG_IN_P : in  std_logic;        -- From comparator (positive)
-    ANALOG_IN_N : in  std_logic;        -- From comparator (negative)
-    DAC_OUT     : out std_logic;        -- To integrator/filter
+    ANALOG_IN  : in  std_logic;         -- From comparator (differential pair handled at I/O level)
+    DAC_OUT    : out std_logic;         -- To integrator/filter
 
     -- Debug
-    TEST_PIN    : out std_logic
+    TEST_PIN   : out std_logic
   );
 end entity;
 
@@ -90,7 +87,6 @@ architecture rtl of axe5000_top is
       mm_ccb_0_m0_read          : out std_logic;
       mm_ccb_0_m0_byteenable    : out std_logic_vector(3 downto 0);
       mm_ccb_0_m0_debugaccess   : out std_logic;
-      pwm_out_conduit           : out std_logic_vector(2 downto 0);
       reset_n_reset_n           : in  std_logic;
       sysclk_clk                : out std_logic
     );
@@ -103,7 +99,7 @@ begin
   system_reset <= not reset_n;
 
   -- Debug output
-  TEST_PIN <= ANALOG_IN_P;              -- Simple debug signal
+  TEST_PIN <= ANALOG_IN;                -- Simple debug signal
 
   -- Bridge clock domain uses the 100MHz system clock
   bridge_clk   <= clk_100m;
@@ -128,7 +124,6 @@ begin
       mm_ccb_0_m0_read          => bridge_read,
       mm_ccb_0_m0_byteenable    => open, -- Not used for word-aligned access
       mm_ccb_0_m0_debugaccess   => open,
-      pwm_out_conduit           => PWM_OUT,
       reset_n_reset_n           => reset_n,
       sysclk_clk                => clk_100m
     );
@@ -186,8 +181,8 @@ begin
       mem_rdata   => adc_rdata,
       mem_rdvalid => adc_rdvalid,
       -- ADC interface
-      analog_in_p => ANALOG_IN_P,
-      analog_in_n => ANALOG_IN_N,
+      analog_in_p => ANALOG_IN,
+      analog_in_n => '0',               -- Not used - differential handled at I/O level
       dac_out     => DAC_OUT
     );
 
@@ -196,15 +191,15 @@ begin
     generic map(
       GC_MEM_ADDR_W      => 12,
       GC_MEM_DATA_W      => 32,
-      GC_IMAGE_TYPE      => 1,         -- ADC Project Type
-      GC_IMAGE_ID        => 16#5000#,  -- AXE5000 ID
-      GC_REV_MAJOR       => 1,         -- Major version
-      GC_REV_MINOR       => 0,         -- Minor version  
-      GC_REV_PATCH       => 0,         -- Patch version
-      GC_REV_BUILDNUMBER => 1,         -- Build number
-      GC_GIT_HASH_MSB    => 0,         -- Git hash upper
-      GC_GIT_HASH_LSB    => 0,         -- Git hash lower
-      GC_GIT_DIRTY       => 0,         -- Git clean
+      GC_IMAGE_TYPE      => 1,          -- ADC Project Type
+      GC_IMAGE_ID        => 16#5000#,   -- AXE5000 ID
+      GC_REV_MAJOR       => 1,          -- Major version
+      GC_REV_MINOR       => 0,          -- Minor version  
+      GC_REV_PATCH       => 0,          -- Patch version
+      GC_REV_BUILDNUMBER => 1,          -- Build number
+      GC_GIT_HASH_MSB    => 0,          -- Git hash upper
+      GC_GIT_HASH_LSB    => 0,          -- Git hash lower
+      GC_GIT_DIRTY       => 0,          -- Git clean
       GC_YYMMDD          => 16#250911#, -- Build date (2025-09-11)
       GC_HHMMSS          => 16#120000#  -- Build time (12:00:00)
     )

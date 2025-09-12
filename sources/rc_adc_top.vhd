@@ -19,20 +19,20 @@ entity rc_adc_top is
   );
   port(
     -- Clock and reset
-    clk          : in  std_logic;
-    reset        : in  std_logic;       -- Changed to std_logic for consistency
+    clk         : in  std_logic;
+    reset       : in  std_logic;        -- Changed to std_logic for consistency
     -- Memory-mapped interface (Avalon-like)
-    mem_cs       : in  std_logic;
-    mem_rd       : in  std_logic;
-    mem_wr       : in  std_logic;       -- @suppress: Unused (read-only interface)
-    mem_addr     : in  std_logic_vector(11 downto 0);
-    mem_wdata    : in  std_logic_vector(31 downto 0); -- @suppress: Unused (read-only interface)
-    mem_rdata    : out std_logic_vector(31 downto 0);
-    mem_rdvalid  : out std_logic;
+    mem_cs      : in  std_logic;
+    mem_rd      : in  std_logic;
+    mem_wr      : in  std_logic;        -- @suppress: Unused (read-only interface)
+    mem_addr    : in  std_logic_vector(11 downto 0);
+    mem_wdata   : in  std_logic_vector(31 downto 0); -- @suppress: Unused (read-only interface)
+    mem_rdata   : out std_logic_vector(31 downto 0);
+    mem_rdvalid : out std_logic;
     -- Physical ADC interface  
-    analog_in_p  : in  std_logic;       -- LVDS comparator input positive
-    analog_in_n  : in  std_logic;       -- LVDS comparator input negative
-    dac_out      : out std_logic        -- DAC output for feedback
+    analog_in_p : in  std_logic;        -- LVDS comparator input positive
+    analog_in_n : in  std_logic;        -- LVDS comparator input negative
+    dac_out     : out std_logic         -- DAC output for feedback
   );
 end entity;
 
@@ -150,16 +150,16 @@ begin
       else
         mem_rdata   <= (others => '0');
         mem_rdvalid <= '0';
-        
+
         if mem_cs = '1' and mem_rd = '1' then
           case to_integer(unsigned(mem_addr(7 downto 0))) is
-            when 0 => -- ADC Data Register (lower 16 bits)
-              mem_rdata(DATA_WIDTH-1 downto 0) <= lp_data_out;
-            when 1 => -- Status Register
+            when 0 =>                   -- ADC Data Register (lower 16 bits)
+              mem_rdata(DATA_WIDTH - 1 downto 0) <= lp_data_out;
+            when 1 =>                   -- Status Register
               mem_rdata(7 downto 0) <= status_reg;
-            when 2 => -- Valid Counter
+            when 2 =>                   -- Valid Counter
               mem_rdata(7 downto 0) <= std_logic_vector(valid_counter);
-            when 3 => -- Activity Counter
+            when 3 =>                   -- Activity Counter
               mem_rdata(15 downto 0) <= std_logic_vector(activity_counter);
             when others =>
               mem_rdata <= (others => '0');

@@ -2298,7 +2298,7 @@ https://fpgasoftware.intel.com/eula.-->
         <ipxact:parameter parameterId="dataSlaveMapParam" type="string">
           <ipxact:name>dataSlaveMapParam</ipxact:name>
           <ipxact:displayName>dataSlaveMapParam</ipxact:displayName>
-          <ipxact:value>&lt;address-map&gt;&lt;slave name='onchip_memory.s1' start='0x0' end='0x40000' datawidth='32' /&gt;&lt;slave name='sdm_mailbox_client.avmm' start='0x40040' end='0x40080' datawidth='32' /&gt;&lt;slave name='pwm24x3.avalon_s1' start='0x40080' end='0x400C0' datawidth='32' /&gt;&lt;slave name='lw_uart.s1' start='0x400C0' end='0x400E0' datawidth='16' /&gt;&lt;slave name='RTI_2S.s1' start='0x400E0' end='0x40100' datawidth='16' /&gt;&lt;slave name='jtag_uart.avalon_jtag_slave' start='0x40108' end='0x40110' datawidth='32' /&gt;&lt;slave name='dip_sw.s1' start='0x40110' end='0x40120' datawidth='32' /&gt;&lt;slave name='sys_id.control_slave' start='0x40120' end='0x40128' datawidth='32' /&gt;&lt;slave name='niosv_m_0.timer_sw_agent' start='0x40140' end='0x40180' datawidth='32' /&gt;&lt;slave name='niosv_m_0.dm_agent' start='0x50000' end='0x60000' datawidth='32' /&gt;&lt;slave name='mm_ccb_0.s0' start='0x100000' end='0x140000' datawidth='32' /&gt;&lt;/address-map&gt;</ipxact:value>
+          <ipxact:value>&lt;address-map&gt;&lt;slave name='onchip_memory.s1' start='0x0' end='0x40000' datawidth='32' /&gt;&lt;slave name='sdm_mailbox_client.avmm' start='0x40040' end='0x40080' datawidth='32' /&gt;&lt;slave name='lw_uart.s1' start='0x400C0' end='0x400E0' datawidth='16' /&gt;&lt;slave name='RTI_2S.s1' start='0x400E0' end='0x40100' datawidth='16' /&gt;&lt;slave name='jtag_uart.avalon_jtag_slave' start='0x40108' end='0x40110' datawidth='32' /&gt;&lt;slave name='dip_sw.s1' start='0x40110' end='0x40120' datawidth='32' /&gt;&lt;slave name='sys_id.control_slave' start='0x40120' end='0x40128' datawidth='32' /&gt;&lt;slave name='niosv_m_0.timer_sw_agent' start='0x40140' end='0x40180' datawidth='32' /&gt;&lt;slave name='niosv_m_0.dm_agent' start='0x50000' end='0x60000' datawidth='32' /&gt;&lt;slave name='mm_ccb_0.s0' start='0x100000' end='0x140000' datawidth='32' /&gt;&lt;/address-map&gt;</ipxact:value>
         </ipxact:parameter>
         <ipxact:parameter parameterId="enableDebug" type="bit">
           <ipxact:name>enableDebug</ipxact:name>
@@ -2388,7 +2388,7 @@ https://fpgasoftware.intel.com/eula.-->
         <ipxact:parameter parameterId="AUTO_PLATFORM_IRQ_RX_INTERRUPTS_USED" type="string">
           <ipxact:name>AUTO_PLATFORM_IRQ_RX_INTERRUPTS_USED</ipxact:name>
           <ipxact:displayName>Auto INTERRUPTS_USED</ipxact:displayName>
-          <ipxact:value>63</ipxact:value>
+          <ipxact:value>62</ipxact:value>
         </ipxact:parameter>
       </ipxact:parameters>
     </altera:altera_module_parameters>
@@ -3873,7 +3873,7 @@ https://fpgasoftware.intel.com/eula.-->
                 &lt;suppliedSystemInfos&gt;
                     &lt;entry&gt;
                         &lt;key&gt;ADDRESS_MAP&lt;/key&gt;
-                        &lt;value&gt;&amp;lt;address-map&amp;gt;&amp;lt;slave name='onchip_memory.s1' start='0x0' end='0x40000' datawidth='32' /&amp;gt;&amp;lt;slave name='sdm_mailbox_client.avmm' start='0x40040' end='0x40080' datawidth='32' /&amp;gt;&amp;lt;slave name='pwm24x3.avalon_s1' start='0x40080' end='0x400C0' datawidth='32' /&amp;gt;&amp;lt;slave name='lw_uart.s1' start='0x400C0' end='0x400E0' datawidth='16' /&amp;gt;&amp;lt;slave name='RTI_2S.s1' start='0x400E0' end='0x40100' datawidth='16' /&amp;gt;&amp;lt;slave name='jtag_uart.avalon_jtag_slave' start='0x40108' end='0x40110' datawidth='32' /&amp;gt;&amp;lt;slave name='dip_sw.s1' start='0x40110' end='0x40120' datawidth='32' /&amp;gt;&amp;lt;slave name='sys_id.control_slave' start='0x40120' end='0x40128' datawidth='32' /&amp;gt;&amp;lt;slave name='niosv_m_0.timer_sw_agent' start='0x40140' end='0x40180' datawidth='32' /&amp;gt;&amp;lt;slave name='niosv_m_0.dm_agent' start='0x50000' end='0x60000' datawidth='32' /&amp;gt;&amp;lt;slave name='mm_ccb_0.s0' start='0x100000' end='0x140000' datawidth='32' /&amp;gt;&amp;lt;/address-map&amp;gt;&lt;/value&gt;
+                        &lt;value&gt;&amp;lt;address-map&amp;gt;&amp;lt;slave name='onchip_memory.s1' start='0x0' end='0x40000' datawidth='32' /&amp;gt;&amp;lt;slave name='sdm_mailbox_client.avmm' start='0x40040' end='0x40080' datawidth='32' /&amp;gt;&amp;lt;slave name='lw_uart.s1' start='0x400C0' end='0x400E0' datawidth='16' /&amp;gt;&amp;lt;slave name='RTI_2S.s1' start='0x400E0' end='0x40100' datawidth='16' /&amp;gt;&amp;lt;slave name='jtag_uart.avalon_jtag_slave' start='0x40108' end='0x40110' datawidth='32' /&amp;gt;&amp;lt;slave name='dip_sw.s1' start='0x40110' end='0x40120' datawidth='32' /&amp;gt;&amp;lt;slave name='sys_id.control_slave' start='0x40120' end='0x40128' datawidth='32' /&amp;gt;&amp;lt;slave name='niosv_m_0.timer_sw_agent' start='0x40140' end='0x40180' datawidth='32' /&amp;gt;&amp;lt;slave name='niosv_m_0.dm_agent' start='0x50000' end='0x60000' datawidth='32' /&amp;gt;&amp;lt;slave name='mm_ccb_0.s0' start='0x100000' end='0x140000' datawidth='32' /&amp;gt;&amp;lt;/address-map&amp;gt;&lt;/value&gt;
                     &lt;/entry&gt;
                 &lt;/suppliedSystemInfos&gt;
                 &lt;consumedSystemInfos/&gt;
@@ -3920,7 +3920,7 @@ https://fpgasoftware.intel.com/eula.-->
                 &lt;suppliedSystemInfos&gt;
                     &lt;entry&gt;
                         &lt;key&gt;INTERRUPTS_USED&lt;/key&gt;
-                        &lt;value&gt;63&lt;/value&gt;
+                        &lt;value&gt;62&lt;/value&gt;
                     &lt;/entry&gt;
                 &lt;/suppliedSystemInfos&gt;
                 &lt;consumedSystemInfos/&gt;

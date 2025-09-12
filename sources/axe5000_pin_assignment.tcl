@@ -11,14 +11,6 @@ set_global_assignment -name DEVICE "A5ED065BB32E6SR0"
 # DELTA-SIGMA ADC WITH RC INTEGRATOR (Current Implementation)
 # ========================================================================
 
-# ADC Input - A0 differential pair (CRUVI HS connection)
-set_location_assignment PIN_N2 -to ANALOG_IN_P     ; # A0_P (CRUVI pin 14)
-set_location_assignment PIN_N1 -to ANALOG_IN_N     ; # A0_N (CRUVI pin 16)
-set_instance_assignment -name IO_STANDARD "LVDS" -to ANALOG_IN_P
-set_instance_assignment -name IO_STANDARD "LVDS" -to ANALOG_IN_N
-# Enable on-chip differential termination and hysteresis for better noise immunity
-set_instance_assignment -name DIFFERENTIAL_TERMINATION ON -to ANALOG_IN_P
-set_instance_assignment -name INPUT_HYSTERESIS ON -to ANALOG_IN_P
 
 # DAC Feedback Output - HSO (HS Serial Out)
 set_location_assignment PIN_N6 -to DAC_OUT         ; # HSO (CRUVI pin 6)
@@ -115,10 +107,6 @@ create_clock -name C_REFCLK -period 10.000 [get_ports C_REFCLK]
 # Standard clock derivation
 derive_pll_clocks
 derive_clock_uncertainty
-
-# LVDS input timing for RC ADC
-set_input_delay -clock CLK_25M_C -max 2.0 [get_ports ANALOG_IN_P]
-set_input_delay -clock CLK_25M_C -min 0.5 [get_ports ANALOG_IN_P]
 
 # TDC high-speed timing (tighter constraints)
 set_input_delay -clock CLK_25M_C -max 0.5 [get_ports lvds_tdc0_p]

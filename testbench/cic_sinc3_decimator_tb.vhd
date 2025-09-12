@@ -15,7 +15,7 @@ end entity;
 architecture Behavioral of cic_sinc3_decimator_tb is
 
   signal clk          : std_logic := '0';
-  signal reset        : std_logic := '1';  -- Changed to std_logic
+  signal reset        : std_logic := '1'; -- Changed to std_logic
   signal data_in      : std_logic := '0';
   signal data_out     : std_logic_vector(15 downto 0);
   signal valid        : std_logic;

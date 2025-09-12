@@ -45,7 +45,7 @@ architecture sim of fir_lowpass_tb is
 
   -- Signals
   signal clk       : std_logic                                  := '0';
-  signal reset     : std_logic                                  := '1';  -- Changed to std_logic
+  signal reset     : std_logic                                  := '1'; -- Changed to std_logic
   signal data_in   : std_logic_vector(INPUT_WIDTH - 1 downto 0) := (others => '0');
   signal valid_in  : std_logic                                  := '0';
   signal data_out  : std_logic_vector(OUTPUT_WIDTH - 1 downto 0);
