@@ -1,19 +1,8 @@
 #!/usr/bin/env python3
-"""Minimal ADC UART Monitor - Reads UART and calculates real ADC values"""
+"""Simple UART Monitor - Displays ADC data from NIOS-V (voltage conversion done in C)"""
 
 import serial
-import re
 import time
-
-# ADC Configuration (Based on FPGA Implementation)
-ADC_BITS = 16   # 16-bit delta-sigma ADC output
-VREF = 1.2      # 1.2V I/O standard (Agilex 5 differential signaling)
-GAIN = 1.0      # ADC gain (no amplification)
-
-def adc_to_voltage(adc_raw):
-    """Convert raw ADC value to voltage"""
-    max_val = (1 << ADC_BITS) - 1
-    return (adc_raw / max_val) * VREF * GAIN
 
 def find_uart_port():
     """Try to find JTAG UART port"""
@@ -31,25 +20,15 @@ def main():
     try:
         ser = serial.Serial(port, 115200, timeout=1)
         print("Connected! Monitoring ADC data...")
-        print("Format: [Time] Raw: 0x12345678 | Voltage: 1.234V")
-        print("-" * 50)
+        print("Note: Voltage conversion is handled by NIOS-V C code")
+        print("-" * 60)
         
         while True:
             line = ser.readline().decode('utf-8', errors='ignore').strip()
             
-            # Look for ADC data pattern: "ADC Data: 0x12345678"
-            match = re.search(r'ADC Data:\s*0x([0-9A-Fa-f]+)', line)
-            if match:
-                raw_hex = match.group(1)
-                raw_value = int(raw_hex, 16)
-                voltage = adc_to_voltage(raw_value)
+            if line:  # Print all non-empty lines
                 timestamp = time.strftime("%H:%M:%S")
-                
-                print(f"[{timestamp}] Raw: 0x{raw_hex.upper():>8} | Voltage: {voltage:.3f}V")
-            
-            # Also print other system messages
-            elif line and not line.startswith('---'):
-                print(f"System: {line}")
+                print(f"[{timestamp}] {line}")
                 
     except KeyboardInterrupt:
         print("\nStopped by user")
