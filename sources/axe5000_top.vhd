@@ -187,6 +187,7 @@ begin
     );
 
   -- About Module: Provides version and build information
+  -- TODO: Implement automatically via build system
   about_inst : entity work.about
     generic map(
       GC_MEM_ADDR_W      => 12,

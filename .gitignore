@@ -214,6 +214,33 @@ __pycache__/
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Python virtual environments
+adc_monitor_env/
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Python distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
 # Temporary clearbox files
 /tmp-clearbox/
 
