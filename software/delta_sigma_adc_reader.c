@@ -67,7 +67,7 @@ void print_about_info(void) {
     uint32_t build_time = IORD_32DIRECT(ABOUT_BASE_ADDR, ABOUT_HHMMSS);
     uint32_t adc_features = IORD_32DIRECT(ABOUT_BASE_ADDR, ABOUT_ADC_FEATURES);
 
-    printf("Project Type: 0x%04X ", image_type);
+    printf("Project Type: 0x%04lX ", image_type);
     if (image_type == 0xADCF) {
         printf("(ADC FPGA)\n");
     }
@@ -75,7 +75,7 @@ void print_about_info(void) {
         printf("(Unknown)\n");
     }
 
-    printf("Project ID: 0x%04X ", image_id);
+    printf("Project ID: 0x%04lX ", image_id);
     if (image_id == 0x5000) {
         printf("(AXE5000)\n");
     }
