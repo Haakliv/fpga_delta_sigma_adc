@@ -14,7 +14,7 @@ add_executable(app.elf)
 
 target_sources(app.elf
     PRIVATE
-        ../delta_sigma_adc_reader.c
+        delta_sigma_adc_reader.c
 )
 
 target_include_directories(app.elf
@@ -63,3 +63,14 @@ add_custom_command(
     VERBATIM
 )
 add_custom_target(create-hex ALL DEPENDS "onchip_memory.hex")
+# Keep Quartus on-chip memory init file (demo.hex) in sync with the latest software build.
+get_filename_component(PROJECT_TOP "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+set(DEMO_HEX_PATH "${PROJECT_TOP}/demo.hex")
+
+add_custom_target(update-demo-hex ALL
+    DEPENDS create-hex
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_BINARY_DIR}/onchip_memory.hex"
+            "${DEMO_HEX_PATH}"
+    COMMENT "Updating demo.hex used for on-chip memory initialization."
+)

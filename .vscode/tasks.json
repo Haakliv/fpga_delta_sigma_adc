@@ -40,26 +40,6 @@
             "problemMatcher": []
         },
         {
-            "label": "NiosV: Download & Run (with reset)",
-            "type": "shell",
-            "command": "niosv-download",
-            "args": [
-                "-g",
-                "-r",
-                "-c",
-                "1",
-                "./build/app.elf"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}",
-                "env": {
-                    "PATH": "C:/altera_pro/25.1.1/niosv/bin;C:/altera_pro/25.1.1/riscfree/debugger/gdbserver-riscv;C:/altera_pro/25.1.1/riscfree/toolchain/riscv32-unknown-elf/bin;C:/altera_pro/25.1.1/riscfree/build_tools/bin;${env:PATH}",
-                    "HOME": "${workspaceFolder}"
-                }
-            },
-            "problemMatcher": []
-        },
-        {
             "label": "NiosV: Build & Flash (no reset)",
             "dependsOrder": "sequence",
             "dependsOn": [
@@ -70,17 +50,6 @@
                 "kind": "build",
                 "isDefault": true
             }
-        },
-        {
-            "label": "NiosV: Build & Flash (with reset)",
-            "dependsOrder": "sequence",
-            "dependsOn": [
-                "NiosV: Build (Debug)",
-                "NiosV: Download & Run (with reset)"
-            ],
-            "problemMatcher": [
-                "$gcc"
-            ]
         },
         {
             "label": "NiosV: JTAG UART terminal",

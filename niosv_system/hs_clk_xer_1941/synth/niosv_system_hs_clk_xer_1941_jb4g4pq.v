@@ -17,7 +17,7 @@
 
 `timescale 1ns / 1ns
 
-module niosv_system_hs_clk_xer_1941_n5n3d3y
+module niosv_system_hs_clk_xer_1941_jb4g4pq
 #(
     parameter DATA_WIDTH       = 8,
               BITS_PER_SYMBOL  = 8,

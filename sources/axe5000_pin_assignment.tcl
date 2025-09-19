@@ -11,10 +11,17 @@ set_global_assignment -name DEVICE "A5ED065BB32E6SR0"
 # DELTA-SIGMA ADC WITH RC INTEGRATOR (Current Implementation)
 # ========================================================================
 
+# Delta-Sigma ADC analog input (differential LVDS)
+set_location_assignment PIN_V6 -to ANALOG_IN       ; # CRUVI analog input
+set_instance_assignment -name IO_STANDARD "1.2-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN
 
 # DAC Feedback Output - HSO (HS Serial Out)
 set_location_assignment PIN_N6 -to DAC_OUT         ; # HSO (CRUVI pin 6)
 set_instance_assignment -name IO_STANDARD "ADJUSTABLE" -to DAC_OUT
+
+# Debug test pin
+set_location_assignment PIN_W5 -to TEST_PIN        ; # Test/debug output
+set_instance_assignment -name IO_STANDARD "1.2-V" -to TEST_PIN
 
 # ========================================================================
 # FUTURE TDC DEVELOPMENT (Time-to-Digital Converter)
@@ -52,15 +59,20 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to tdc_enable
 set_location_assignment PIN_A7 -to CLK_25M_C
 set_instance_assignment -name IO_STANDARD "1.2-V" -to CLK_25M_C
 
+# CPU Reset (from AXE5000 board)
+set_location_assignment PIN_A11 -to CPU_RESETn     ; # Board reset button
+set_instance_assignment -name IO_STANDARD "1.2-V" -to CPU_RESETn
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to CPU_RESETn
+
 # Reference clock input (CRUVI REFCLK - if using external reference)
 set_location_assignment PIN_AJ28 -to C_REFCLK      ; # REFCLK (CRUVI pin 11)
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to C_REFCLK
 
 # UART connections (from AXE5000 board)
-set_location_assignment PIN_AG23 -to UART_RXD
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_RXD
-set_location_assignment PIN_AG24 -to UART_TXD
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_TXD
+set_location_assignment PIN_AG23 -to UART_RX
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_RX
+set_location_assignment PIN_AG24 -to UART_TX
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_TX
 
 # Status LEDs (from AXE5000 board)
 set_location_assignment PIN_AG21 -to LED1          ; # Board LED1
@@ -108,12 +120,6 @@ create_clock -name C_REFCLK -period 10.000 [get_ports C_REFCLK]
 derive_pll_clocks
 derive_clock_uncertainty
 
-# TDC high-speed timing (tighter constraints)
-set_input_delay -clock CLK_25M_C -max 0.5 [get_ports lvds_tdc0_p]
-set_input_delay -clock CLK_25M_C -min 0.1 [get_ports lvds_tdc0_p]
-set_input_delay -clock CLK_25M_C -max 0.5 [get_ports lvds_tdc1_p]
-set_input_delay -clock CLK_25M_C -min 0.1 [get_ports lvds_tdc1_p]
-
-# DAC output timing
-set_output_delay -clock CLK_25M_C -max 5.0 [get_ports DAC_OUT]
-set_output_delay -clock CLK_25M_C -min 1.0 [get_ports DAC_OUT]
+# TDC high-speed timing (tighter constraints) - only for future TDC signals
+# Note: TDC timing constraints moved to axe5000_top.sdc to avoid conflicts
+# Note: All timing constraints for delta-sigma ADC signals are in axe5000_top.sdc

@@ -1,3 +1,4 @@
+set_instance_assignment -name SLEW_RATE 2 -to UART_TX -entity axe5000_top
 # --------------------------------------------------------------------------
 # AXE5000 / Agilex 5 — Clean QSF (ADC on B0, clock on A7, UART 3v3)
 # Device: A5EC008BM16AE6S
@@ -50,7 +51,6 @@ set_global_assignment -name IP_FILE ip/niosv_system/sys_id.ip
 set_global_assignment -name IP_FILE ip/niosv_system/dip_sw.ip
 set_global_assignment -name IP_FILE ip/niosv_system/pb.ip
 set_global_assignment -name IP_FILE ip/niosv_system/sdm_mailbox_client.ip
-set_global_assignment -name IP_FILE ip/niosv_system/jtag_uart.ip
 set_global_assignment -name IP_FILE ip/niosv_system/iopll.ip
 set_global_assignment -name IP_FILE ip/niosv_system/sysclk_bridge.ip
 set_global_assignment -name IP_FILE ip/niosv_system/niosv_m_0.ip
@@ -81,8 +81,8 @@ set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to DIP_SW[1] -entity axe
 
 # UART (3.3-V bank). Match top-level names exactly.
 # If your board swaps these, flip the two set_location lines only.
-set_location_assignment PIN_AG24 -to UART_RX
-set_location_assignment PIN_AG23 -to UART_TX
+set_location_assignment PIN_AG23 -to UART_RX -comment IOBANK_5A
+set_location_assignment PIN_AG24 -to UART_TX -comment IOBANK_5A
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_RX -entity axe5000_top
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_TX -entity axe5000_top
 
