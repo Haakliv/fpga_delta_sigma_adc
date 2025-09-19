@@ -19,20 +19,24 @@ entity rc_adc_top is
   );
   port(
     -- Clock and reset
-    clk         : in  std_logic;
-    reset       : in  std_logic;        -- Changed to std_logic for consistency
+    clk          : in  std_logic;
+    reset        : in  std_logic;
     -- Memory-mapped interface (Avalon-like)
-    mem_cs      : in  std_logic;
-    mem_rd      : in  std_logic;
-    mem_wr      : in  std_logic;        -- @suppress: Unused (read-only interface)
-    mem_addr    : in  std_logic_vector(11 downto 0);
-    mem_wdata   : in  std_logic_vector(31 downto 0); -- @suppress: Unused (read-only interface)
-    mem_rdata   : out std_logic_vector(31 downto 0);
-    mem_rdvalid : out std_logic;
+    mem_cs       : in  std_logic;
+    mem_rd       : in  std_logic;
+    mem_wr       : in  std_logic;       -- @suppress: Unused (read-only interface)
+    mem_addr     : in  std_logic_vector(11 downto 0);
+    mem_wdata    : in  std_logic_vector(31 downto 0); -- @suppress: Unused (read-only interface)
+    mem_rdata    : out std_logic_vector(31 downto 0);
+    mem_rdvalid  : out std_logic;
     -- Physical ADC interface  
-    analog_in_p : in  std_logic;        -- LVDS comparator input positive
-    analog_in_n : in  std_logic;        -- LVDS comparator input negative
-    dac_out     : out std_logic         -- DAC output for feedback
+    analog_in_p  : in  std_logic;       -- LVDS comparator input positive
+    analog_in_n  : in  std_logic;       -- LVDS comparator input negative
+    dac_out      : out std_logic;       -- DAC output for feedback
+
+    -- Streaming sample output
+    sample_data  : out std_logic_vector(DATA_WIDTH - 1 downto 0);
+    sample_valid : out std_logic
   );
 end entity;
 
@@ -139,6 +143,10 @@ begin
       data_out  => lp_data_out,
       valid_out => lp_valid_out
     );
+
+  -- Expose decimated samples for external streaming logic
+  sample_data  <= lp_data_out;
+  sample_valid <= lp_valid_out;
 
   -- Memory-mapped register interface
   memory_interface : process(clk)

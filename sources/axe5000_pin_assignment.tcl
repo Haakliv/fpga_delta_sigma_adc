@@ -2,11 +2,6 @@
 # Pin Assignment for AXE5000 CRUVI HS Delta-Sigma ADC
 # Allocates LVDS pairs for RC integrator and future TDC development
 # ************************************************************************
-
-# Project settings
-set_global_assignment -name FAMILY "Agilex 5"
-set_global_assignment -name DEVICE "A5ED065BB32E6SR0"
-
 # ========================================================================
 # DELTA-SIGMA ADC WITH RC INTEGRATOR (Current Implementation)
 # ========================================================================
@@ -59,15 +54,6 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to tdc_enable
 set_location_assignment PIN_A7 -to CLK_25M_C
 set_instance_assignment -name IO_STANDARD "1.2-V" -to CLK_25M_C
 
-# CPU Reset (from AXE5000 board)
-set_location_assignment PIN_A11 -to CPU_RESETn     ; # Board reset button
-set_instance_assignment -name IO_STANDARD "1.2-V" -to CPU_RESETn
-set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to CPU_RESETn
-
-# Reference clock input (CRUVI REFCLK - if using external reference)
-set_location_assignment PIN_AJ28 -to C_REFCLK      ; # REFCLK (CRUVI pin 11)
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to C_REFCLK
-
 # UART connections (from AXE5000 board)
 set_location_assignment PIN_AG23 -to UART_RX
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_RX
@@ -119,7 +105,3 @@ create_clock -name C_REFCLK -period 10.000 [get_ports C_REFCLK]
 # Standard clock derivation
 derive_pll_clocks
 derive_clock_uncertainty
-
-# TDC high-speed timing (tighter constraints) - only for future TDC signals
-# Note: TDC timing constraints moved to axe5000_top.sdc to avoid conflicts
-# Note: All timing constraints for delta-sigma ADC signals are in axe5000_top.sdc

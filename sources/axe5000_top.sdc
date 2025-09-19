@@ -52,9 +52,6 @@ set_false_path -from [get_clocks *] -to [get_clocks {altera_reserved_tck}]
 # Set False Path
 #**************************************************************
 
-# CPU reset (asynchronous reset input)
-set_false_path -from [get_ports {CPU_RESETn}]
-
 # UART signals (asynchronous serial communication via USB-to-UART bridge)
 set_false_path -from [get_ports {UART_RX}]
 set_false_path -to [get_ports {UART_TX}]

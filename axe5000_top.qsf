@@ -74,24 +74,33 @@ set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to DIP_SW[1] -entity axe
 
 # UART (3.3-V bank). Match top-level names exactly.
 # If your board swaps these, flip the two set_location lines only.
-set_location_assignment PIN_AG23 -to UART_RX -comment IOBANK_5A
-set_location_assignment PIN_AG24 -to UART_TX -comment IOBANK_5A
+set_location_assignment PIN_AG23 -to UART_RX
+set_location_assignment PIN_AG24 -to UART_TX
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_RX -entity axe5000_top
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_TX -entity axe5000_top
 
 # DAC feedback output on HSIO single-ended (N6) — follow VADJ rail
 set_location_assignment PIN_N6 -to DAC_OUT
-set_instance_assignment -name IO_STANDARD "1.2-V" -to DAC_OUT -entity axe5000_top
+set_instance_assignment -name IO_STANDARD ADJUSTABLE -to DAC_OUT -entity axe5000_top
 # If VADJ is 1.3 V in hardware, change to:
 # set_instance_assignment -name IO_STANDARD "1.3-V" -to DAC_OUT -entity axe5000_top
 set_instance_assignment -name SLEW_RATE 0 -to DAC_OUT -entity axe5000_top
-set_location_assignment PIN_U4 -to TEST_PIN -comment IOBANK_2A_T
-set_instance_assignment -name IO_STANDARD "1.2-V" -to TEST_PIN -entity axe5000_top
-set_instance_assignment -name SLEW_RATE 0 -to TEST_PIN -entity axe5000_top
 set_location_assignment PIN_A12 -to CPU_RESETn -comment IOBANK_3A_B
 set_instance_assignment -name IO_STANDARD "1.2-V" -to CPU_RESETn -entity axe5000_top
 set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to CPU_RESETn -entity axe5000_top
-set_location_assignment PIN_V6 -to ANALOG_IN -comment IOBANK_2A_T
-set_instance_assignment -name IO_STANDARD "1.2-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN -entity axe5000_top
 set_location_assignment PIN_W5 -to "ANALOG_IN(n)" -comment IOBANK_2A_T
 set_global_assignment -name IP_FILE ip/niosv_system/niosv_system_rs232_0.ip
+set_location_assignment PIN_AG21 -to LED1
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to LED1 -entity axe5000_top
+set_location_assignment PIN_AH22 -to RLED
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to RLED -entity axe5000_top
+set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to RLED -entity axe5000_top
+set_location_assignment PIN_AK21 -to GLED
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to GLED -entity axe5000_top
+set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to GLED -entity axe5000_top
+set_location_assignment PIN_AK20 -to BLED
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to BLED -entity axe5000_top
+set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to BLED -entity axe5000_top
+set_location_assignment PIN_A12 -to USER_BTN
+set_instance_assignment -name IO_STANDARD "1.2-V" -to USER_BTN -entity axe5000_top
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to USER_BTN -entity axe5000_top

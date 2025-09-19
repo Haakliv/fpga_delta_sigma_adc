@@ -31,6 +31,9 @@ architecture sim of rc_adc_top_tb is
   signal analog_in_n : std_logic := '1';
   signal dac_out     : std_logic;       -- @suppress
 
+  signal sample_data  : std_logic_vector(DATA_WIDTH - 1 downto 0);
+  signal sample_valid : std_logic;
+
   -- Memory-mapped interface signals (new interface)
   signal mem_cs      : std_logic                     := '0';
   signal mem_rd      : std_logic                     := '0';
@@ -68,7 +71,9 @@ begin
       mem_rdvalid => mem_rdvalid,
       analog_in_p => analog_in_p,
       analog_in_n => analog_in_n,
-      dac_out     => dac_out
+      dac_out     => dac_out,
+      sample_data  => sample_data,
+      sample_valid => sample_valid
     );
 
   -- Clock generation
@@ -233,9 +238,16 @@ begin
       else
         heartbeat_count := heartbeat_count + 1;
 
+        if sample_valid = '1' then
+          sample_count <= sample_count + 1;
+          if ((sample_count + 1) mod 256) = 0 then
+            report "Sample[" & integer'image(sample_count + 1) & "] = 0x" & to_hstring(sample_data) severity note;
+          end if;
+        end if;
+
         -- Simple heartbeat every 1000 cycles
         if (heartbeat_count mod 1000) = 0 then
-          sample_count <= sample_count + 1;
+          report "Heartbeat after " & integer'image(heartbeat_count) & " cycles, samples=" & integer'image(sample_count) severity note;
           -- Memory read testing is in the main test process
         end if;
       end if;
@@ -243,3 +255,4 @@ begin
   end process;
 
 end architecture;
+

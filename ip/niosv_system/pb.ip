@@ -752,22 +752,6 @@ https://fpgasoftware.intel.com/eula.-->
           <ipxact:name>embeddedsw.dts.params.altr,gpio-bank-width</ipxact:name>
           <ipxact:value>1</ipxact:value>
         </ipxact:parameter>
-        <ipxact:parameter parameterId="embeddedsw.dts.params.altr,interrupt-type" type="string">
-          <ipxact:name>embeddedsw.dts.params.altr,interrupt-type</ipxact:name>
-          <ipxact:value>2</ipxact:value>
-        </ipxact:parameter>
-        <ipxact:parameter parameterId="embeddedsw.dts.params.altr,interrupt_type" type="string">
-          <ipxact:name>embeddedsw.dts.params.altr,interrupt_type</ipxact:name>
-          <ipxact:value>2</ipxact:value>
-        </ipxact:parameter>
-        <ipxact:parameter parameterId="embeddedsw.dts.params.edge_type" type="string">
-          <ipxact:name>embeddedsw.dts.params.edge_type</ipxact:name>
-          <ipxact:value>1</ipxact:value>
-        </ipxact:parameter>
-        <ipxact:parameter parameterId="embeddedsw.dts.params.level_trigger" type="string">
-          <ipxact:name>embeddedsw.dts.params.level_trigger</ipxact:name>
-          <ipxact:value>0</ipxact:value>
-        </ipxact:parameter>
         <ipxact:parameter parameterId="embeddedsw.dts.params.resetvalue" type="string">
           <ipxact:name>embeddedsw.dts.params.resetvalue</ipxact:name>
           <ipxact:value>0</ipxact:value>
