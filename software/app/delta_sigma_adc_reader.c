@@ -21,8 +21,8 @@
 #define ADC_STATUS_REG     0x04    // Status register  
 
 // Status register bits
-#define ADC_DATA_READY     0x01    // Data ready flag
-#define ADC_VALID          0x02    // ADC valid flag
+#define ADC_DATA_READY     0x01    // Sticky data ready flag (clears on data read)
+#define ADC_VALID          0x10   // Data valid flag (indicates valid data present)
 
 // ADC base address - From Platform Designer and VHDL address decoder
 // Platform Designer maps bridge at 0x00100000-0x0013ffff

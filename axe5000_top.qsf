@@ -45,20 +45,13 @@ set_global_assignment -name VHDL_FILE sources/axe5000_top.vhd
 set_global_assignment -name SDC_FILE sources/axe5000_top.sdc
 
 set_global_assignment -name IP_FILE ip/niosv_system/reset_release.ip
-set_global_assignment -name IP_FILE ip/niosv_system/onchip_memory.ip
 set_global_assignment -name IP_FILE ip/niosv_system/jtag_master.ip
-set_global_assignment -name IP_FILE ip/niosv_system/sys_id.ip
 set_global_assignment -name IP_FILE ip/niosv_system/dip_sw.ip
 set_global_assignment -name IP_FILE ip/niosv_system/pb.ip
-set_global_assignment -name IP_FILE ip/niosv_system/sdm_mailbox_client.ip
 set_global_assignment -name IP_FILE ip/niosv_system/iopll.ip
 set_global_assignment -name IP_FILE ip/niosv_system/sysclk_bridge.ip
-set_global_assignment -name IP_FILE ip/niosv_system/niosv_m_0.ip
 set_global_assignment -name IP_FILE ip/niosv_system/reset_bridge.ip
 set_global_assignment -name IP_FILE ip/niosv_system/niosv_system_clock_in.ip
-set_global_assignment -name IP_FILE ip/niosv_system/interval_2s_timer.ip
-set_global_assignment -name IP_FILE ip/niosv_system/lw_uart.ip
-set_global_assignment -name IP_FILE ip/niosv_system/niosv_system_mm_ccb_0.ip
 set_global_assignment -name QSYS_FILE niosv_system.qsys
 
 # If another script assigns pins, it may reintroduce conflicts — leave disabled.
@@ -101,3 +94,4 @@ set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to CPU_RESETn -entity ax
 set_location_assignment PIN_V6 -to ANALOG_IN -comment IOBANK_2A_T
 set_instance_assignment -name IO_STANDARD "1.2-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN -entity axe5000_top
 set_location_assignment PIN_W5 -to "ANALOG_IN(n)" -comment IOBANK_2A_T
+set_global_assignment -name IP_FILE ip/niosv_system/niosv_system_rs232_0.ip
