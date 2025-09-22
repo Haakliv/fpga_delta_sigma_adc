@@ -16,14 +16,14 @@ entity axe5000_top is
     CLK_25M_C : in  std_logic;
     -- UART
     UART_TX   : out std_logic;
-    UART_RX   : in  std_logic;
     -- DIP Switches
     -- Delta-Sigma ADC (differential LVDS input)
     ANALOG_IN : in  std_logic;          -- From comparator (differential pair handled at I/O level)
     DAC_OUT   : out std_logic;          -- To integrator/filter
 
     -- Debug
-    TEST_PIN  : out std_logic
+    TEST_PIN  : out std_logic;
+    USER_BTN  : in  std_logic           -- Active high reset
   );
 end entity;
 
@@ -31,9 +31,9 @@ architecture rtl of axe5000_top is
 
   constant C_ADC_DATA_WIDTH : positive := 16;
 
-  signal sysclk_pd : std_logic;
-  signal rst       : std_logic            := '1';
-  signal por_cnt   : unsigned(7 downto 0) := (others => '0');
+  signal sysclk_pd     : std_logic;
+  signal rst           : std_logic;
+  signal rst_n_from_pd : std_logic;
 
   signal adc_sample_data  : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
   signal adc_sample_valid : std_logic;
@@ -61,8 +61,6 @@ architecture rtl of axe5000_top is
   constant C_UART_CR : std_logic_vector(7 downto 0) := x"0D";
   constant C_UART_LF : std_logic_vector(7 downto 0) := x"0A";
 
-  constant C_POR_MAX : unsigned(por_cnt'range) := (others => '1');
-
   function to_hex_ascii(nibble : std_logic_vector(3 downto 0)) return std_logic_vector is
     variable v_value : integer range 0 to 15;
     variable v_ascii : std_logic_vector(7 downto 0);
@@ -76,12 +74,13 @@ architecture rtl of axe5000_top is
     return v_ascii;
   end function;
 
-  component niosv_system is             -- @suppress
+  component adc_system is               -- @suppress
     port(
       clk_25m_clk                    : in  std_logic                    := 'X'; -- clk
       dip_sw_export                  : in  std_logic_vector(1 downto 0) := (others => 'X'); -- export
       pb_export                      : in  std_logic                    := 'X'; -- export
       reset_n_reset_n                : in  std_logic                    := 'X'; -- reset_n
+      sys_reset_reset_n              : out std_logic; -- reset_n
       data_receive_ready             : in  std_logic                    := 'X'; -- ready
       data_receive_data              : out std_logic_vector(7 downto 0); -- data
       data_receive_error             : out std_logic; -- error
@@ -94,16 +93,17 @@ architecture rtl of axe5000_top is
       rs232_0_external_interface_TXD : out std_logic; -- TXD -- @suppress "Naming convention violation: port name should match pattern '^[a-z]([a-z0-9]|(_(?!_)))*|^[A-Z]([A-Z0-9]|(_(?!_)))*(_n)?'"
       sysclk_clk                     : out std_logic -- clk
     );
-  end component niosv_system;
+  end component adc_system;
 
 begin
 
   TEST_PIN <= ANALOG_IN;
 
-  i_niosv_inst : niosv_system
+  i_niosv_inst : adc_system
     port map(
       clk_25m_clk                    => CLK_25M_C,
-      reset_n_reset_n                => not rst,
+      reset_n_reset_n                => USER_BTN,
+      sys_reset_reset_n              => rst_n_from_pd,
       dip_sw_export                  => (others => '0'),
       pb_export                      => '0',
       data_receive_ready             => '1',
@@ -114,7 +114,7 @@ begin
       data_transmit_error            => '0',
       data_transmit_valid            => uart_tx_valid,
       data_transmit_ready            => uart_tx_ready,
-      rs232_0_external_interface_RXD => UART_RX,
+      rs232_0_external_interface_RXD => open,
       rs232_0_external_interface_TXD => UART_TX,
       sysclk_clk                     => sysclk_pd
     );
@@ -141,6 +141,8 @@ begin
       sample_data  => adc_sample_data,
       sample_valid => adc_sample_valid
     );
+
+  rst <= not rst_n_from_pd;
 
   p_sample_capture : process(sysclk_pd)
   begin
@@ -228,18 +230,6 @@ begin
               uart_tx_valid <= '1';
           end case;
         end if;
-      end if;
-    end if;
-  end process;
-
-  p_poc : process(sysclk_pd)
-  begin
-    if rising_edge(sysclk_pd) then
-      if por_cnt /= C_POR_MAX then
-        por_cnt <= por_cnt + 1;
-        rst     <= '1';
-      else
-        rst <= '0';
       end if;
     end if;
   end process;

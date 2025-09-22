@@ -14,7 +14,7 @@ refer to the applicable agreement for further details, at
 https://fpgasoftware.intel.com/eula.-->
 <ipxact:component xmlns:altera="http://www.altera.com/XMLSchema/IPXact2014/extensions" xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2014">
   <ipxact:vendor>Intel FPGA University Program</ipxact:vendor>
-  <ipxact:library>niosv_system_rs232_0</ipxact:library>
+  <ipxact:library>adc_system_rs232_0</ipxact:library>
   <ipxact:name>rs232_0</ipxact:name>
   <ipxact:version>18.0</ipxact:version>
   <ipxact:busInterfaces>
@@ -555,7 +555,7 @@ https://fpgasoftware.intel.com/eula.-->
   <ipxact:vendorExtensions>
     <altera:entity_info>
       <ipxact:vendor>Intel FPGA University Program</ipxact:vendor>
-      <ipxact:library>niosv_system_rs232_0</ipxact:library>
+      <ipxact:library>adc_system_rs232_0</ipxact:library>
       <ipxact:name>altera_up_avalon_rs232</ipxact:name>
       <ipxact:version>18.0</ipxact:version>
     </altera:entity_info>
