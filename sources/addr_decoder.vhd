@@ -43,7 +43,7 @@ begin
     --------------------------------------------------------------------------
     -- Main
     --------------------------------------------------------------------------
-    interface_proc : process(clk)
+    p_interface : process(clk)
         variable v_index_request : natural range 0 to 2 ** GC_BRIDGE_ADDR_W - 1  := 0;
         variable v_index_valid   : boolean                                       := false;
         variable v_index         : natural range 0 to GC_NUM_MODULES - 1         := 0;

@@ -8,10 +8,10 @@ library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
 
 entity dac_1_bit_tb is
-  generic(runner_cfg : string);
+  generic(GC_RUNNER_CFG : string);
 end entity;
 
-architecture testbench of dac_1_bit_tb is
+architecture behavioral of dac_1_bit_tb is
   signal clk          : std_logic := '0';
   signal reset        : std_logic := '0'; -- Changed to std_logic
   signal data_in      : std_logic := '0';
@@ -19,7 +19,7 @@ architecture testbench of dac_1_bit_tb is
   signal sim_finished : boolean   := false;
 
 begin
-  uut : entity work.dac_1_bit
+  i_uut : entity work.dac_1_bit
     port map(
       clk     => clk,
       reset   => reset,
@@ -27,7 +27,7 @@ begin
       dac_out => dac_out
     );
 
-  clk_process : process
+  p_clk : process
   begin
     while not sim_finished loop
       clk_gen(clk, 20 ns);              -- 20 ns period (same as before: 10ns low + 10ns high)
@@ -35,9 +35,9 @@ begin
     wait;
   end process;
 
-  stimulus : process
+  p_stimulus : process
   begin
-    test_runner_setup(runner, runner_cfg);
+    test_runner_setup(runner, GC_RUNNER_CFG);
 
     while test_suite loop
       if run("test_dac_output") then

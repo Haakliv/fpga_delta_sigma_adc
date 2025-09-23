@@ -15,14 +15,14 @@ library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
 
 entity lvds_comparator_tb is
-  generic(runner_cfg : string);
+  generic(GC_RUNNER_CFG : string);
 end entity;
 
-architecture sim of lvds_comparator_tb is
+architecture behavioral of lvds_comparator_tb is
 
   -- Constants
-  constant CLK_PERIOD    : time := 10 ns;
-  constant BIT_FLIP_RATE : real := 0.02; -- 2% bit flip probability (more reasonable)
+  constant C_CLK_PERIOD    : time := 10 ns;
+  constant C_BIT_FLIP_RATE : real := 0.02; -- 2% bit flip probability (more reasonable)
 
   -- Signals
   signal clk        : std_logic := '0';
@@ -40,10 +40,10 @@ architecture sim of lvds_comparator_tb is
 begin
 
   -- Device Under Test (entity instantiation)
-  dut : entity work.lvds_comparator
+  i_dut : entity work.lvds_comparator
     generic map(
-      ENABLE_MAJORITY => true,
-      USE_INTEL_LVDS  => false
+      GC_ENABLE_MAJORITY => true,
+      GC_USE_INTEL_LVDS  => false
     )
     port map(
       clk        => clk,
@@ -54,27 +54,27 @@ begin
     );
 
   -- Clock generation
-  clk_process : process
+  p_clk : process
   begin
     while not sim_finished loop
       clk <= '0';
-      wait for CLK_PERIOD / 2;
+      wait for C_CLK_PERIOD / 2;
       clk <= '1';
-      wait for CLK_PERIOD / 2;
+      wait for C_CLK_PERIOD / 2;
     end loop;
     wait;
   end process;
 
   -- Test runner process
-  main : process
+  p_main : process
   begin
-    test_runner_setup(runner, runner_cfg);
+    test_runner_setup(runner, GC_RUNNER_CFG);
 
     while test_suite loop
       if run("basic_test") then
         info("Running basic test for lvds_comparator_tb");
         -- Test completion is handled in test_process
-        wait for CLK_PERIOD * 10000;    -- Allow test to complete
+        wait for C_CLK_PERIOD * 10000;  -- Allow test to complete
         check(true, "Basic test completed");
       end if;
     end loop;
@@ -85,35 +85,35 @@ begin
   end process;
 
   -- Reset generation
-  reset_process : process
+  p_reset : process
   begin
     reset <= '1';
-    wait for CLK_PERIOD * 5;
+    wait for C_CLK_PERIOD * 5;
     reset <= '0';
     wait;
   end process;
 
   -- Test pattern generation (simple alternating pattern for debugging)
-  test_pattern_process : process(clk)
-    variable counter : integer                      := 0;
-    constant pattern : std_logic_vector(7 downto 0) := "10101010"; -- Simple alternating pattern
+  p_test_pattern : process(clk)
+    variable v_counter : integer                      := 0;
+    constant C_PATTERN : std_logic_vector(7 downto 0) := "10101010"; -- Simple alternating pattern
   begin
     if rising_edge(clk) then
       if reset = '1' then
-        counter      := 0;
+        v_counter    := 0;
         test_pattern <= '0';
       else
-        test_pattern <= pattern(counter mod 8);
-        counter      := counter + 1;
+        test_pattern <= C_PATTERN(v_counter mod 8);
+        v_counter    := v_counter + 1;
       end if;
     end if;
   end process;
 
   -- Add some bit flips to test robustness
-  corruption_process : process(clk)
-    variable seed1, seed2 : integer := 999;
-    variable rand_val     : real;
-    variable flip_bit     : std_logic;
+  p_corruption : process(clk)
+    variable v_seed1, v_seed2 : integer := 999;
+    variable v_rand_val       : real;
+    variable v_flip_bit       : std_logic;
   begin
     if rising_edge(clk) then
       if reset = '1' then
@@ -121,17 +121,17 @@ begin
         corrupted_n <= '1';
       else
         -- Generate random number
-        uniform(seed1, seed2, rand_val);
+        uniform(v_seed1, v_seed2, v_rand_val);
 
         -- Decide if we flip this bit
-        if rand_val < BIT_FLIP_RATE then
-          flip_bit := '1';
+        if v_rand_val < C_BIT_FLIP_RATE then
+          v_flip_bit := '1';
         else
-          flip_bit := '0';
+          v_flip_bit := '0';
         end if;
 
         -- Apply corruption
-        if flip_bit = '1' then
+        if v_flip_bit = '1' then
           corrupted_p <= not test_pattern;
           corrupted_n <= test_pattern;
         else
@@ -143,47 +143,47 @@ begin
   end process;
 
   -- Test monitoring: mirror DUT exactly (2-FF sync + 3-tap majority)
-  monitor_process : process(clk)
-    variable sync_m     : std_logic_vector(1 downto 0) := (others => '0');
-    variable maj_m      : std_logic_vector(2 downto 0) := (others => '0');
-    variable sum        : integer range 0 to 3;
-    variable expected   : std_logic                    := '0';
-    variable comp_model : std_logic;
+  p_monitor : process(clk)
+    variable v_sync_m     : std_logic_vector(1 downto 0) := (others => '0');
+    variable v_maj_m      : std_logic_vector(2 downto 0) := (others => '0');
+    variable v_sum        : integer range 0 to 3;
+    variable v_expected   : std_logic                    := '0';
+    variable v_comp_model : std_logic;
   begin
     if rising_edge(clk) then
       if reset = '1' then
         error_count   <= 0;
         total_samples <= 0;
-        sync_m        := (others => '0');
-        maj_m         := (others => '0');
-        expected      := '0';
+        v_sync_m      := (others => '0');
+        v_maj_m       := (others => '0');
+        v_expected    := '0';
       else
         -- Behavioral comparator exactly like the DUT sim_fallback
-        comp_model := '1' when (corrupted_p = '1' and corrupted_n = '0') else
-                      '0' when (corrupted_p = '0' and corrupted_n = '1') else
-                      corrupted_p;
+        v_comp_model := '1' when (corrupted_p = '1' and corrupted_n = '0') else
+                        '0' when (corrupted_p = '0' and corrupted_n = '1') else
+                        corrupted_p;
 
         -- Mirror 2-FF sync (shift register)
-        sync_m := sync_m(0) & comp_model;
+        v_sync_m := v_sync_m(0) & v_comp_model;
 
         -- Compute majority on CURRENT maj_m (before shift)
-        sum      := 0;
+        v_sum      := 0;
         for i in 0 to 2 loop
-          if maj_m(i) = '1' then
-            sum := sum + 1;
+          if v_maj_m(i) = '1' then
+            v_sum := v_sum + 1;
           end if;
         end loop;
-        expected := '1' when sum >= 2 else '0';
+        v_expected := '1' when v_sum >= 2 else '0';
 
         -- Shift in new sample from sync output
-        maj_m := maj_m(1 downto 0) & sync_m(1);
+        v_maj_m := v_maj_m(1 downto 0) & v_sync_m(1);
 
         -- Only start comparing after pipeline fills (2 sync + 3 majority = 5 cycles)
         total_samples <= total_samples + 1;
         if total_samples > 5 then
-          if bit_stream /= expected then
+          if bit_stream /= v_expected then
             error_count <= error_count + 1;
-            report "Mismatch at sample " & integer'image(total_samples) & ": got " & std_logic'image(bit_stream) & ", expected " & std_logic'image(expected) severity note;
+            report "Mismatch at sample " & integer'image(total_samples) & ": got " & std_logic'image(bit_stream) & ", expected " & std_logic'image(v_expected) severity note;
           end if;
         end if;
 
@@ -196,18 +196,18 @@ begin
   end process;
 
   -- Test sequence
-  test_process : process
+  p_test : process
   begin
     wait until reset = '0';
 
     report "Starting LVDS/Comparator Test" severity note;
-    report "Bit flip rate: " & real'image(BIT_FLIP_RATE) severity note;
+    report "Bit flip rate: " & real'image(C_BIT_FLIP_RATE) severity note;
 
     -- Run test for sufficient time
-    wait for CLK_PERIOD * 1000;
+    wait for C_CLK_PERIOD * 1000;
 
     -- Final report
-    wait for CLK_PERIOD * 10;
+    wait for C_CLK_PERIOD * 10;
     report "=== Final Results ===" severity note;
     report "Total samples: " & integer'image(total_samples) severity note;
     report "Total errors: " & integer'image(error_count) severity note;
@@ -215,7 +215,7 @@ begin
     if total_samples > 0 then
       report "Final error rate: " & real'image(real(error_count) / real(total_samples)) severity note;
 
-      if real(error_count) / real(total_samples) < BIT_FLIP_RATE * 2.0 then -- Error rate should be better than 2x input corruption rate
+      if real(error_count) / real(total_samples) < C_BIT_FLIP_RATE * 2.0 then -- Error rate should be better than 2x input corruption rate
         report "PASS: Majority filter working effectively" severity note;
       else
         report "FAIL: Too many errors getting through" severity error;

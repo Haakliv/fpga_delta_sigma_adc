@@ -9,10 +9,10 @@ library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
 
 entity cic_sinc3_decimator_tb is
-  generic(runner_cfg : string);
+  generic(GC_RUNNER_CFG : string);
 end entity;
 
-architecture Behavioral of cic_sinc3_decimator_tb is
+architecture behavioral of cic_sinc3_decimator_tb is
 
   signal clk          : std_logic := '0';
   signal reset        : std_logic := '1'; -- Changed to std_logic
@@ -21,15 +21,15 @@ architecture Behavioral of cic_sinc3_decimator_tb is
   signal valid        : std_logic;
   signal sim_finished : boolean   := false;
 
-  constant CLK_PERIOD : time := 10 ns;
+  constant C_CLK_PERIOD : time := 10 ns;
 
 begin
 
   -- DUT (Entity instantiation)
-  DUT : entity work.cic_sinc3_decimator
+  i_dut : entity work.cic_sinc3_decimator
     generic map(
-      DECIMATION   => 16,
-      OUTPUT_WIDTH => 16
+      GC_DECIMATION   => 16,
+      GC_OUTPUT_WIDTH => 16
     )
     port map(
       clk      => clk,
@@ -40,10 +40,10 @@ begin
     );
 
   -- Clock generation using package procedure
-  clk_process : process
+  p_clk : process
   begin
     while not sim_finished loop
-      clk_gen(clk, CLK_PERIOD);
+      clk_gen(clk, C_CLK_PERIOD);
     end loop;
     wait;
   end process;
@@ -51,7 +51,7 @@ begin
   -- Test
   process
   begin
-    test_runner_setup(runner, runner_cfg);
+    test_runner_setup(runner, GC_RUNNER_CFG);
 
     while test_suite loop
       if run("test_alternating_pattern") then
@@ -64,7 +64,7 @@ begin
         -- Test with alternating pattern
         for i in 0 to 100 loop          -- Reduced iterations for faster testing
           data_in <= not data_in;
-          wait for CLK_PERIOD;
+          wait for C_CLK_PERIOD;
         end loop;
 
         check(true, "Alternating pattern test completed");
@@ -78,7 +78,7 @@ begin
         info("Testing all ones pattern");
         -- Test with all ones
         data_in <= '1';
-        wait for 100 * CLK_PERIOD;      -- Reduced time for faster testing
+        wait for 100 * C_CLK_PERIOD;    -- Reduced time for faster testing
 
         check(true, "All ones pattern test completed");
 
@@ -91,7 +91,7 @@ begin
         info("Testing all zeros pattern");
         -- Test with all zeros
         data_in <= '0';
-        wait for 100 * CLK_PERIOD;      -- Reduced time for faster testing
+        wait for 100 * C_CLK_PERIOD;    -- Reduced time for faster testing
 
         check(true, "All zeros pattern test completed");
       end if;
@@ -102,7 +102,7 @@ begin
   end process;
 
   -- Output monitoring process  
-  monitor_process : process(clk)
+  p_monitor : process(clk)
   begin
     if rising_edge(clk) then
       if valid = '1' then

@@ -13,9 +13,9 @@ use work.clk_rst_pkg.all;
 
 entity rc_adc_top is
   generic(
-    DECIMATION      : positive := 64;   -- Oversampling ratio (configurable)
-    DATA_WIDTH      : positive := 16;   -- Output data width
-    ENABLE_MAJORITY : boolean  := true  -- Enable majority filter in LVDS
+    GC_DECIMATION      : positive := 64; -- Oversampling ratio (configurable)
+    GC_DATA_WIDTH      : positive := 16; -- Output data width
+    GC_ENABLE_MAJORITY : boolean  := true -- Enable majority filter in LVDS
   );
   port(
     -- Clock and reset
@@ -35,7 +35,7 @@ entity rc_adc_top is
     dac_out      : out std_logic;       -- DAC output for feedback
 
     -- Streaming sample output
-    sample_data  : out std_logic_vector(DATA_WIDTH - 1 downto 0);
+    sample_data  : out std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
     sample_valid : out std_logic
   );
 end entity;
@@ -46,11 +46,11 @@ architecture rtl of rc_adc_top is
   signal lvds_bit_stream : std_logic;   -- Output from LVDS comparator
   signal analog_in_sync  : std_logic_vector(1 downto 0) := (others => '0');
   signal dac_input       : std_logic;
-  signal cic_data_out    : std_logic_vector(DATA_WIDTH - 1 downto 0);
+  signal cic_data_out    : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
   signal cic_valid_out   : std_logic;
-  signal eq_data_out     : std_logic_vector(DATA_WIDTH - 1 downto 0);
+  signal eq_data_out     : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
   signal eq_valid_out    : std_logic;
-  signal lp_data_out     : std_logic_vector(DATA_WIDTH - 1 downto 0);
+  signal lp_data_out     : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
   signal lp_valid_out    : std_logic;
 
   -- Status monitoring
@@ -61,10 +61,10 @@ architecture rtl of rc_adc_top is
 begin
 
   -- LVDS input stage with comparator
-  lvds_inst : entity work.lvds_comparator
+  i_lvds : entity work.lvds_comparator
     generic map(
-      ENABLE_MAJORITY => ENABLE_MAJORITY,
-      USE_INTEL_LVDS  => false
+      GC_ENABLE_MAJORITY => GC_ENABLE_MAJORITY,
+      GC_USE_INTEL_LVDS  => true
     )
     port map(
       clk        => clk,
@@ -76,10 +76,10 @@ begin
 
   -- 2-FF synchronizer for comparator bit (critical for sigma-delta feedback)
   -- This synchronizes the LVDS comparator output into the clk domain
-  sync_process : process(clk)
+  p_sync : process(clk)
   begin
     if rising_edge(clk) then
-      if reset = RST_ACTIVE then
+      if reset = C_RST_ACTIVE then
         analog_in_sync <= (others => '0');
       else
         -- Synchronize LVDS comparator output into clk domain
@@ -92,7 +92,7 @@ begin
   dac_input <= analog_in_sync(1);
 
   -- DAC feedback at full sampling rate
-  dac_inst : entity work.dac_1_bit
+  i_dac : entity work.dac_1_bit
     port map(
       clk     => clk,
       reset   => reset,
@@ -101,10 +101,10 @@ begin
     );
 
   -- CIC SINC3 decimator (uses synchronized bit)
-  cic_inst : entity work.cic_sinc3_decimator
+  i_cic : entity work.cic_sinc3_decimator
     generic map(
-      DECIMATION   => DECIMATION,
-      OUTPUT_WIDTH => DATA_WIDTH
+      GC_DECIMATION   => GC_DECIMATION,
+      GC_OUTPUT_WIDTH => GC_DATA_WIDTH
     )
     port map(
       clk      => clk,
@@ -115,10 +115,10 @@ begin
     );
 
   -- Decimation by 2 equalizer
-  eq_inst : entity work.fir_equalizer
+  i_eq : entity work.fir_equalizer
     generic map(
-      INPUT_WIDTH  => DATA_WIDTH,
-      OUTPUT_WIDTH => DATA_WIDTH
+      GC_INPUT_WIDTH  => GC_DATA_WIDTH,
+      GC_OUTPUT_WIDTH => GC_DATA_WIDTH
     )
     port map(
       clk       => clk,
@@ -130,10 +130,10 @@ begin
     );
 
   -- Final low-pass filter
-  lp_inst : entity work.fir_lowpass
+  i_lp : entity work.fir_lowpass
     generic map(
-      INPUT_WIDTH  => DATA_WIDTH,
-      OUTPUT_WIDTH => DATA_WIDTH
+      GC_INPUT_WIDTH  => GC_DATA_WIDTH,
+      GC_OUTPUT_WIDTH => GC_DATA_WIDTH
     )
     port map(
       clk       => clk,
@@ -149,7 +149,7 @@ begin
   sample_valid <= lp_valid_out;
 
   -- Memory-mapped register interface
-  memory_interface : process(clk)
+  p_memory_interface : process(clk)
   begin
     if rising_edge(clk) then
       if reset = '1' then
@@ -162,7 +162,7 @@ begin
         if mem_cs = '1' and mem_rd = '1' then
           case to_integer(unsigned(mem_addr(7 downto 0))) is
             when 0 =>                   -- ADC Data Register (lower 16 bits)
-              mem_rdata(DATA_WIDTH - 1 downto 0) <= lp_data_out;
+              mem_rdata(GC_DATA_WIDTH - 1 downto 0) <= lp_data_out;
             when 1 =>                   -- Status Register
               mem_rdata(7 downto 0) <= status_reg;
             when 2 =>                   -- Valid Counter
@@ -179,7 +179,7 @@ begin
   end process;
 
   -- Status monitoring
-  status_process : process(clk)
+  p_status : process(clk)
   begin
     if rising_edge(clk) then
       if reset = '1' then

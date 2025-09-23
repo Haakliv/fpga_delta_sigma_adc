@@ -11,12 +11,12 @@ use altera_mf.altera_mf_components.all;
 
 entity lvds_comparator is
   generic(
-    ENABLE_MAJORITY : boolean := true;  -- Enable 3-tap majority filter
-    USE_INTEL_LVDS  : boolean := false  -- true: instantiate altlvds_rx, false: behavioral compare for sim
+    GC_ENABLE_MAJORITY : boolean := true; -- Enable 3-tap majority filter
+    GC_USE_INTEL_LVDS  : boolean := true -- true: instantiate altlvds_rx, false: behavioral compare for sim
   );
   port(
     clk        : in  std_logic;
-    reset      : in  rst_t;
+    reset      : in  T_RST_T;
     lvds_p     : in  std_logic;         -- LVDS positive
     lvds_n     : in  std_logic;         -- LVDS negative (paired at IO; unused in altlvds_rx inst)
     bit_stream : out std_logic
@@ -24,13 +24,13 @@ entity lvds_comparator is
 end entity;
 
 architecture rtl of lvds_comparator is
-  -- Intel/Altera differential input buffer (note: no rx_inb on this entity)
+  -- Intel/Altera differential input buffer (note: no rx_inb on this entity). Warnings suppressed due to being a vendor primitive
   component altlvds_rx                  -- @suppress "Component declaration is not equal to its matching entity"
     generic(
-      number_of_channels     : natural := 1;
-      deserialization_factor : natural := 1;
-      data_rate              : string  := "UNUSED";
-      intended_device_family : string  := "Agilex 5"
+      number_of_channels     : natural := 1; -- @suppress "Naming convention violation: generic name should match pattern '^GC_[A-Z]([A-Z0-9]|(_(?!_)))*'"
+      deserialization_factor : natural := 1; -- @suppress "Naming convention violation: generic name should match pattern '^GC_[A-Z]([A-Z0-9]|(_(?!_)))*'"
+      data_rate              : string  := "UNUSED"; -- @suppress "Naming convention violation: generic name should match pattern '^GC_[A-Z]([A-Z0-9]|(_(?!_)))*'"
+      intended_device_family : string  := "Agilex 5" -- @suppress "Naming convention violation: generic name should match pattern '^GC_[A-Z]([A-Z0-9]|(_(?!_)))*'"
     );
     port(
       rx_in      : in  std_logic_vector(0 downto 0);
@@ -46,8 +46,8 @@ architecture rtl of lvds_comparator is
   signal majority_out : std_logic                    := '0';
 begin
 
-  use_intel : if USE_INTEL_LVDS generate
-    lvds_rx_inst : altlvds_rx
+  g_use_intel : if GC_USE_INTEL_LVDS generate
+    i_lvds_rx : altlvds_rx
       generic map(
         number_of_channels     => 1,
         deserialization_factor => 1,
@@ -62,7 +62,7 @@ begin
     comp_out <= lvds_rx_out(0);
   end generate;
 
-  sim_fallback : if not USE_INTEL_LVDS generate
+  g_sim_fallback : if not GC_USE_INTEL_LVDS generate
     -- Simple behavioral comparator for simulation
     -- Works with your TB driving lvds_p = ideal, lvds_n = not ideal
     comp_out <= '1' when (lvds_p = '1' and lvds_n = '0') else
@@ -71,10 +71,10 @@ begin
   end generate;
 
   -- 2-FF synchronizer
-  sync_process : process(clk)
+  p_sync : process(clk)
   begin
     if rising_edge(clk) then
-      if reset = RST_ACTIVE then
+      if reset = C_RST_ACTIVE then
         sync_reg <= (others => '0');
       else
         sync_reg <= sync_reg(0) & comp_out;
@@ -83,12 +83,12 @@ begin
   end process;
 
   -- Optional 3-tap majority on synchronized data
-  majority_gen : if ENABLE_MAJORITY generate
-    majority_process : process(clk)
-      variable sum : integer range 0 to 3;
+  g_majority_gen : if GC_ENABLE_MAJORITY generate
+    p_majority : process(clk)
+      variable v_sum : integer range 0 to 3;
     begin
       if rising_edge(clk) then
-        if reset = RST_ACTIVE then
+        if reset = C_RST_ACTIVE then
           maj_reg      <= (others => '0');
           majority_out <= '0';
         else
@@ -96,13 +96,13 @@ begin
           maj_reg <= maj_reg(1 downto 0) & sync_reg(1);
 
           -- majority of previous 3 samples (maj_reg before update)
-          sum          := 0;
+          v_sum        := 0;
           for i in 0 to 2 loop
             if maj_reg(i) = '1' then
-              sum := sum + 1;
+              v_sum := v_sum + 1;
             end if;
           end loop;
-          majority_out <= '1' when sum >= 2 else '0';
+          majority_out <= '1' when v_sum >= 2 else '0';
         end if;
       end if;
     end process;
@@ -110,7 +110,7 @@ begin
     bit_stream <= majority_out;
   end generate;
 
-  no_majority : if not ENABLE_MAJORITY generate
+  g_no_majority : if not GC_ENABLE_MAJORITY generate
     bit_stream <= sync_reg(1);
   end generate;
 

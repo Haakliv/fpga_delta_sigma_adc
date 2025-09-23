@@ -99,7 +99,7 @@ begin
 
   TEST_PIN <= ANALOG_IN;
 
-  i_niosv_inst : adc_system
+  i_niosv : adc_system
     port map(
       clk_25m_clk                    => CLK_25M_C,
       reset_n_reset_n                => USER_BTN,
@@ -119,11 +119,11 @@ begin
       sysclk_clk                     => sysclk_pd
     );
 
-  i_adc_inst : entity work.rc_adc_top
+  i_adc : entity work.rc_adc_top
     generic map(
-      DECIMATION      => GC_ADC_DECIMATION,
-      DATA_WIDTH      => C_ADC_DATA_WIDTH,
-      ENABLE_MAJORITY => false
+      GC_DECIMATION      => GC_ADC_DECIMATION,
+      GC_DATA_WIDTH      => C_ADC_DATA_WIDTH,
+      GC_ENABLE_MAJORITY => false
     )
     port map(
       clk          => sysclk_pd,

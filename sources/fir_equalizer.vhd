@@ -12,34 +12,34 @@ use work.clk_rst_pkg.all;
 
 entity fir_equalizer is
   generic(
-    INPUT_WIDTH  : positive := 16;
-    OUTPUT_WIDTH : positive := 16
+    GC_INPUT_WIDTH  : positive := 16;
+    GC_OUTPUT_WIDTH : positive := 16
   );
   port(
     clk       : in  std_logic;
-    reset     : in  rst_t;
-    data_in   : in  std_logic_vector(INPUT_WIDTH - 1 downto 0);
+    reset     : in  T_RST_T;
+    data_in   : in  std_logic_vector(GC_INPUT_WIDTH - 1 downto 0);
     valid_in  : in  std_logic;
-    data_out  : out std_logic_vector(OUTPUT_WIDTH - 1 downto 0);
+    data_out  : out std_logic_vector(GC_OUTPUT_WIDTH - 1 downto 0);
     valid_out : out std_logic
   );
 end entity;
 
 architecture rtl of fir_equalizer is
 
-  signal prev_sample    : signed(INPUT_WIDTH - 1 downto 0)  := (others => '0');
-  signal current_sample : signed(INPUT_WIDTH - 1 downto 0)  := (others => '0');
-  signal decimation_cnt : std_logic                         := '0';
-  signal output_reg     : signed(OUTPUT_WIDTH - 1 downto 0) := (others => '0');
-  signal valid_reg      : std_logic                         := '0';
+  signal prev_sample    : signed(GC_INPUT_WIDTH - 1 downto 0)  := (others => '0');
+  signal current_sample : signed(GC_INPUT_WIDTH - 1 downto 0)  := (others => '0');
+  signal decimation_cnt : std_logic                            := '0';
+  signal output_reg     : signed(GC_OUTPUT_WIDTH - 1 downto 0) := (others => '0');
+  signal valid_reg      : std_logic                            := '0';
 
 begin
 
   process(clk)
-    variable sum : signed(INPUT_WIDTH downto 0);
+    variable v_sum : signed(GC_INPUT_WIDTH downto 0);
   begin
     if rising_edge(clk) then
-      if reset = RST_ACTIVE then
+      if reset = C_RST_ACTIVE then
         prev_sample    <= (others => '0');
         current_sample <= (others => '0');
         decimation_cnt <= '0';
@@ -53,8 +53,8 @@ begin
 
         -- Output average every other sample
         if decimation_cnt = '1' then
-          sum        := resize(prev_sample, INPUT_WIDTH + 1) + resize(current_sample, INPUT_WIDTH + 1);
-          output_reg <= resize(shift_right(sum, 1), OUTPUT_WIDTH);
+          v_sum      := resize(prev_sample, GC_INPUT_WIDTH + 1) + resize(current_sample, GC_INPUT_WIDTH + 1);
+          output_reg <= resize(shift_right(v_sum, 1), GC_OUTPUT_WIDTH);
           valid_reg  <= '1';
         else
           valid_reg <= '0';
