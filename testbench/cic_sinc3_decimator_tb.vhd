@@ -9,7 +9,7 @@ library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
 
 entity cic_sinc3_decimator_tb is
-  generic(GC_RUNNER_CFG : string);
+  generic(runner_cfg : string);
 end entity;
 
 architecture behavioral of cic_sinc3_decimator_tb is
@@ -51,7 +51,7 @@ begin
   -- Test
   process
   begin
-    test_runner_setup(runner, GC_RUNNER_CFG);
+    test_runner_setup(runner, runner_cfg);
 
     while test_suite loop
       if run("test_alternating_pattern") then

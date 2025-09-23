@@ -64,7 +64,7 @@ begin
   i_lvds : entity work.lvds_comparator
     generic map(
       GC_ENABLE_MAJORITY => GC_ENABLE_MAJORITY,
-      GC_USE_INTEL_LVDS  => true
+      GC_USE_INTEL_LVDS  => false
     )
     port map(
       clk        => clk,

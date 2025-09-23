@@ -14,7 +14,7 @@ library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
 
 entity fir_equalizer_tb is
-  generic(GC_RUNNER_CFG : string);
+  generic(runner_cfg : string);
 end entity;
 
 architecture behavioral of fir_equalizer_tb is
@@ -65,7 +65,7 @@ begin
   -- Test runner
   p_main : process
   begin
-    test_runner_setup(runner, GC_RUNNER_CFG);
+    test_runner_setup(runner, runner_cfg);
 
     while test_suite loop
       if run("basic_test") then

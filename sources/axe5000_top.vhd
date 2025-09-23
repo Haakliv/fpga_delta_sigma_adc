@@ -89,8 +89,8 @@ architecture rtl of axe5000_top is
       data_transmit_error            : in  std_logic                    := 'X'; -- error
       data_transmit_valid            : in  std_logic                    := 'X'; -- valid
       data_transmit_ready            : out std_logic; -- ready
-      rs232_0_external_interface_RXD : in  std_logic                    := 'X'; -- RXD -- @suppress "Naming convention violation: port name should match pattern '^[a-z]([a-z0-9]|(_(?!_)))*|^[A-Z]([A-Z0-9]|(_(?!_)))*(_n)?'"
-      rs232_0_external_interface_TXD : out std_logic; -- TXD -- @suppress "Naming convention violation: port name should match pattern '^[a-z]([a-z0-9]|(_(?!_)))*|^[A-Z]([A-Z0-9]|(_(?!_)))*(_n)?'"
+      rs232_0_external_interface_RXD : in  std_logic                    := 'X'; -- RXD -- @suppress "Naming convention violation: port name should match pattern '^(?:[a-z](?:[a-z0-9]|_(?!_))*|[A-Z](?:[A-Z0-9]|_(?!_))*)(?:_n)?$'"
+      rs232_0_external_interface_TXD : out std_logic; -- TXD -- @suppress "Naming convention violation: port name should match pattern '^(?:[a-z](?:[a-z0-9]|_(?!_))*|[A-Z](?:[A-Z0-9]|_(?!_))*)(?:_n)?$'"
       sysclk_clk                     : out std_logic -- clk
     );
   end component adc_system;

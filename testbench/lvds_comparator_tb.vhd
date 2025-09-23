@@ -15,7 +15,7 @@ library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
 
 entity lvds_comparator_tb is
-  generic(GC_RUNNER_CFG : string);
+  generic(runner_cfg : string);
 end entity;
 
 architecture behavioral of lvds_comparator_tb is
@@ -68,7 +68,7 @@ begin
   -- Test runner process
   p_main : process
   begin
-    test_runner_setup(runner, GC_RUNNER_CFG);
+    test_runner_setup(runner, runner_cfg);
 
     while test_suite loop
       if run("basic_test") then

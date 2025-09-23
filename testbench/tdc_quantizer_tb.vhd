@@ -14,7 +14,7 @@ library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
 
 entity tdc_quantizer_tb is
-  generic(GC_RUNNER_CFG : string);
+  generic(runner_cfg : string);
 end entity;
 
 architecture behavioral of tdc_quantizer_tb is
@@ -53,7 +53,7 @@ architecture behavioral of tdc_quantizer_tb is
   signal sim_finished      : boolean := false;
 begin
   -- DUT
-  i_dut : tdc_quantizer
+  i_dut : entity work.tdc_quantizer
     generic map(
       GC_TDC_BITS     => C_TDC_BITS,
       GC_COUNTER_BITS => 16
@@ -85,7 +85,7 @@ begin
   -- VUnit runner
   p_main : process
   begin
-    test_runner_setup(runner, GC_RUNNER_CFG);
+    test_runner_setup(runner, runner_cfg);
 
     while test_suite loop
       if run("basic_test") then

@@ -12,7 +12,7 @@ use altera_mf.altera_mf_components.all;
 entity lvds_comparator is
   generic(
     GC_ENABLE_MAJORITY : boolean := true; -- Enable 3-tap majority filter
-    GC_USE_INTEL_LVDS  : boolean := true -- true: instantiate altlvds_rx, false: behavioral compare for sim
+    GC_USE_INTEL_LVDS  : boolean := false -- true: instantiate altlvds_rx, false: behavioral compare for sim
   );
   port(
     clk        : in  std_logic;
@@ -27,10 +27,10 @@ architecture rtl of lvds_comparator is
   -- Intel/Altera differential input buffer (note: no rx_inb on this entity). Warnings suppressed due to being a vendor primitive
   component altlvds_rx                  -- @suppress "Component declaration is not equal to its matching entity"
     generic(
-      number_of_channels     : natural := 1; -- @suppress "Naming convention violation: generic name should match pattern '^GC_[A-Z]([A-Z0-9]|(_(?!_)))*'"
-      deserialization_factor : natural := 1; -- @suppress "Naming convention violation: generic name should match pattern '^GC_[A-Z]([A-Z0-9]|(_(?!_)))*'"
-      data_rate              : string  := "UNUSED"; -- @suppress "Naming convention violation: generic name should match pattern '^GC_[A-Z]([A-Z0-9]|(_(?!_)))*'"
-      intended_device_family : string  := "Agilex 5" -- @suppress "Naming convention violation: generic name should match pattern '^GC_[A-Z]([A-Z0-9]|(_(?!_)))*'"
+      number_of_channels     : natural := 1; -- @suppress "Naming convention violation: generic name should match pattern '^(?:runner_cfg|GC_[A-Z](?:[A-Z0-9]|_(?!_))*)$'"
+      deserialization_factor : natural := 1; -- @suppress "Naming convention violation: generic name should match pattern '^(?:runner_cfg|GC_[A-Z](?:[A-Z0-9]|_(?!_))*)$'"
+      data_rate              : string  := "UNUSED"; -- @suppress "Naming convention violation: generic name should match pattern '^(?:runner_cfg|GC_[A-Z](?:[A-Z0-9]|_(?!_))*)$'"
+      intended_device_family : string  := "Agilex 5" -- @suppress "Naming convention violation: generic name should match pattern '^(?:runner_cfg|GC_[A-Z](?:[A-Z0-9]|_(?!_))*)$'"
     );
     port(
       rx_in      : in  std_logic_vector(0 downto 0);
