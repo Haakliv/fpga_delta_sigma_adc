@@ -18,24 +18,6 @@ entity tdc_quantizer_tb is
 end entity;
 
 architecture behavioral of tdc_quantizer_tb is
-  component tdc_quantizer is
-    generic(
-      GC_TDC_BITS     : positive := 8;
-      GC_COUNTER_BITS : positive := 16
-    );
-    port(
-      clk       : in  std_logic;
-      reset     : in  std_logic;
-      tdc_start : in  std_logic;
-      tdc_stop  : in  std_logic;
-      enable    : in  std_logic;
-      trigger   : in  std_logic;
-      tdc_value : out std_logic_vector(GC_TDC_BITS - 1 downto 0);
-      tdc_valid : out std_logic;
-      overflow  : out std_logic
-    );
-  end component;
-
   constant C_CLK_PERIOD : time     := 10 ns; -- 100 MHz
   constant C_TDC_BITS   : positive := 8;
 

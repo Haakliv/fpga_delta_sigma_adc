@@ -30,8 +30,6 @@ set_global_assignment -name POWER_APPLY_THERMAL_MARGIN ADDITIONAL
 # -------- Sources / IP --------
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 set_global_assignment -name VHDL_FILE sources/clk_rst_pkg.vhd
-set_global_assignment -name VHDL_FILE sources/about_pkg.vhd
-set_global_assignment -name VHDL_FILE sources/about.vhd
 set_global_assignment -name VHDL_FILE sources/addr_decoder.vhd
 set_global_assignment -name VHDL_FILE sources/tdc_quantizer.vhd
 set_global_assignment -name VHDL_FILE sources/rc_adc_top.vhd
