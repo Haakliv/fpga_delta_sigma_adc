@@ -6,6 +6,13 @@ VUnit run script for FPGA Delta Sigma ADC testbenches
 from pathlib import Path
 from vunit import VUnit
 import sys
+from subprocess import run
+from pathlib import Path
+
+enable_cov = False
+if "--cov" in sys.argv:
+    enable_cov = True
+    sys.argv.remove("--cov")   # strip before giving argv to VUnit
 
 # Create VUnit instance
 try:
@@ -67,13 +74,28 @@ except Exception as e:
 vu.set_compile_option("modelsim.vcom_flags", ["-2008", "-explicit"])
 vu.set_sim_option("modelsim.vsim_flags", ["-t", "ps"])
 
+lib.set_sim_option("enable_coverage", True)
+lib.set_compile_option("modelsim.vcom_flags", ["+cover=bs"])
+
 def main():
     """Main function to run tests"""
     try:
         print(f"Found {len(lib.get_test_benches())} test bench(es)")
     except:
         print("Test benches loaded successfully")
-    vu.main()
 
+    def post_run(results):
+        if not enable_cov:
+            return
+        results.merge_coverage(file_name="coverage_data.ucdb")
+
+        ucdb = str(Path("coverage_data.ucdb").resolve())
+
+        run(["vcover", "report", "-html", "-output", "cov_html", ucdb], check=False)
+        # Console summary
+        run(["vcover", "report", "-details", ucdb], check=False)
+        print("HTML coverage report: cov_html/index.html")
+
+    vu.main(post_run=post_run)
 if __name__ == "__main__":
     main()
