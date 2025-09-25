@@ -9,6 +9,8 @@ import sys
 from subprocess import run
 from pathlib import Path
 
+ROOT = Path(__file__).parent
+
 enable_cov = False
 if "--cov" in sys.argv:
     enable_cov = True
@@ -85,16 +87,22 @@ def main():
         print("Test benches loaded successfully")
 
     def post_run(results):
-        if not enable_cov:
-            return
         results.merge_coverage(file_name="coverage_data.ucdb")
-
         ucdb = str(Path("coverage_data.ucdb").resolve())
 
-        run(["vcover", "report", "-html", "-output", "cov_html", ucdb], check=False)
-        # Console summary
-        run(["vcover", "report", "-details", ucdb], check=False)
-        print("HTML coverage report: cov_html/index.html")
+        inst_args = [
+            "-instance=/cic_sinc3_decimator_tb/i_dut",
+            "-instance=/dac_1_bit_tb/i_dut",
+            "-instance=/fir_equalizer_tb/i_dut",
+            "-instance=/fir_lowpass_tb/i_dut",
+            "-instance=/lvds_comparator_tb/i_dut",
+            "-instance=/rc_adc_top_tb/i_dut",
+            "-instance=/tdc_quantizer_tb/i_dut",
+        ]
+
+        run(["vcover", "report", "-html", "-output", "cov_html", *inst_args, ucdb], check=False)
+        run(["vcover", "report", "-details", *inst_args, ucdb], check=False)
+        print("HTML coverage report (DUT-only): cov_html/index.html")
 
     vu.main(post_run=post_run)
 if __name__ == "__main__":
