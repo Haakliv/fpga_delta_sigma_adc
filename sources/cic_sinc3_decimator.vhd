@@ -57,7 +57,7 @@ architecture rtl of cic_sinc3_decimator is
   signal y_out   : signed(GC_OUTPUT_WIDTH - 1 downto 0) := (others => '0');
   signal y_valid : std_logic                            := '0';
 
-  -- scale shift ≈ log2(R^3)
+  -- Scale shift = log2(R^3). Exact for power-of-two R (e.g., R=65536 → shift=48).
   constant C_SCALE_SHIFT : natural := 3 * clog2(GC_DECIMATION);
 
   -- 1-bit map: '1' → +1, '0' → −1
@@ -69,36 +69,6 @@ architecture rtl of cic_sinc3_decimator is
       return v_one;
     else
       return -v_one;
-    end if;
-  end function;
-
-  -- arithmetic right shift with saturation
-  function arshift_sat(x : T_ACC; sh : natural; Wout : natural)
-  return signed is
-    variable v_r    : T_ACC                     := x;
-    variable v_out  : signed(Wout - 1 downto 0);
-    constant C_MAXV : signed(Wout - 1 downto 0) := to_signed(2 ** (Wout - 1) - 1, Wout);
-    constant C_MINV : signed(Wout - 1 downto 0) := to_signed(-2 ** (Wout - 1), Wout);
-  begin
-    for i in 1 to sh loop
-      v_r := v_r(v_r'high) & v_r(v_r'high downto 1); -- arithmetic >> 1
-    end loop;
-
-    if v_r'length <= Wout then
-      return resize(v_r, Wout);
-    else
-      v_out := v_r(Wout - 1 downto 0);
-      if v_r'high - 1 >= Wout then
-        if (v_r(v_r'high) = '0' and (not (v_r(v_r'high - 1 downto Wout) = (v_r'high - 1 downto Wout => '0')))) then
-          return C_MAXV;
-        elsif (v_r(v_r'high) = '1' and (not (v_r(v_r'high - 1 downto Wout) = (v_r'high - 1 downto Wout => '1')))) then
-          return C_MINV;
-        else
-          return v_out;
-        end if;
-      else
-        return v_out;
-      end if;
     end if;
   end function;
 
@@ -155,6 +125,7 @@ begin
   -- Combs @ decimated rate
   process(clk)
     variable v_comb1, v_comb2, v_comb3 : T_ACC;
+    variable v_scaled                  : T_ACC;
   begin
     if rising_edge(clk) then
       if reset = C_RST_ACTIVE then
@@ -164,6 +135,7 @@ begin
         y_out   <= (others => '0');
         y_valid <= '0';
       elsif dec_pulse = '1' then
+        -- Comb stages (differentiation)
         v_comb1 := decimated - comb1_d;
         comb1_d <= decimated;
 
@@ -173,7 +145,17 @@ begin
         v_comb3 := v_comb2 - comb3_d;
         comb3_d <= v_comb2;
 
-        y_out   <= arshift_sat(v_comb3, C_SCALE_SHIFT, GC_OUTPUT_WIDTH);
+        -- Scale down by R^3 with rounding (exact for power-of-two R)
+        v_scaled := v_comb3;
+        if C_SCALE_SHIFT > 0 then
+          -- Add rounding: 0.5 LSB at the bit we'll cut (round half up)
+          v_scaled := v_scaled + shift_left(to_signed(1, v_scaled'length), C_SCALE_SHIFT - 1);
+          -- Arithmetic right shift using numeric_std
+          v_scaled := shift_right(v_scaled, C_SCALE_SHIFT);
+        end if;
+
+        -- Resize to output width (saturates on overflow)
+        y_out   <= resize(v_scaled, GC_OUTPUT_WIDTH);
         y_valid <= '1';
       else
         y_valid <= '0';
