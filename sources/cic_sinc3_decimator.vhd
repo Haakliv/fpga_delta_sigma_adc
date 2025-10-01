@@ -35,7 +35,7 @@ architecture rtl of cic_sinc3_decimator is
 
   -- CIC growth bits = N * log2(R), N=3
   constant C_GROWTH_BITS : natural := 3 * clog2(GC_DECIMATION);
-  constant C_EXTRA_GUARD : natural := 2;
+  constant C_EXTRA_GUARD : natural := 4;
   constant C_ACC_WIDTH   : natural := 1 + C_GROWTH_BITS + C_EXTRA_GUARD;
 
   subtype T_ACC is signed(C_ACC_WIDTH - 1 downto 0);

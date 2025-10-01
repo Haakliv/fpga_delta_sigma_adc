@@ -1,6 +1,6 @@
 -- ************************************************************************
 -- Delta-Sigma ADC Top Level for AXE5000
--- Streams filtered samples directly over RS-232 UART (Intel IP)
+-- Streams filtered samples directly over RS-232 UART
 -- ************************************************************************
 
 library ieee;
@@ -9,7 +9,12 @@ use ieee.numeric_std.all;
 
 entity axe5000_top is
   generic(
-    GC_ADC_DECIMATION : positive := 64  -- Configurable OSR/decimation factor
+    -- OSR calculation for 100 MHz clock, 115200 baud UART:
+    -- UART capacity: 115200 / 10 bits = 11,520 bytes/sec
+    -- Bytes per sample: 6 (4 hex + CR + LF)
+    -- Max sample rate: 11,520 / 6 = 1,920 samples/sec
+    -- Safe OSR: 65536 gives 1,526 Hz sample rate (79.5% UART utilization)
+    GC_ADC_DECIMATION : positive := 65536 -- 2^16 decimation for safe UART bandwidth
   );
   port(
     -- Clock and Reset
@@ -17,8 +22,9 @@ entity axe5000_top is
     -- UART
     UART_TX   : out std_logic;
     -- DIP Switches
-    -- Delta-Sigma ADC (differential LVDS input)
-    ANALOG_IN : in  std_logic;          -- From comparator (differential pair handled at I/O level)
+    -- Delta-Sigma ADC (true differential LVDS input)
+    -- Quartus automatically creates ANALOG_IN(n) when LVDS I/O standard is assigned
+    ANALOG_IN : in  std_logic;          -- Differential pair P-pin (Quartus manages N-pin)
     DAC_OUT   : out std_logic;          -- To integrator/filter
 
     -- Debug
@@ -121,9 +127,8 @@ begin
 
   i_adc : entity work.rc_adc_top
     generic map(
-      GC_DECIMATION      => GC_ADC_DECIMATION,
-      GC_DATA_WIDTH      => C_ADC_DATA_WIDTH,
-      GC_ENABLE_MAJORITY => false
+      GC_DECIMATION => GC_ADC_DECIMATION,
+      GC_DATA_WIDTH => C_ADC_DATA_WIDTH
     )
     port map(
       clk          => sysclk_pd,
@@ -135,8 +140,7 @@ begin
       mem_wdata    => (others => '0'),
       mem_rdata    => open,
       mem_rdvalid  => open,
-      analog_in_p  => ANALOG_IN,
-      analog_in_n  => '0',
+      analog_in    => ANALOG_IN,
       dac_out      => DAC_OUT,
       sample_data  => adc_sample_data,
       sample_valid => adc_sample_valid

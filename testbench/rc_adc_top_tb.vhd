@@ -26,9 +26,10 @@ architecture behavioral of rc_adc_top_tb is
 
   -- Signals for DUT with OSR=16 (low OSR start)
   signal clk         : std_logic := '0';
-  signal reset       : std_logic := '1'; -- Changed to std_logic
-  signal analog_in_p : std_logic := '0'; -- Updated signal names
+  signal reset       : std_logic := '1';
+  signal analog_in_p : std_logic := '0'; -- Internal test signals for differential
   signal analog_in_n : std_logic := '1';
+  signal analog_in   : std_logic := '0'; -- Simulated LVDS comparator output
   signal dac_out     : std_logic;       -- @suppress
 
   signal sample_data  : std_logic_vector(C_DATA_WIDTH - 1 downto 0);
@@ -52,12 +53,17 @@ architecture behavioral of rc_adc_top_tb is
 
 begin
 
+  -- Simulate LVDS I/O buffer differential comparison
+  -- In real hardware, this is done by the LVDS I/O buffer in Quartus
+  analog_in <= '1' when (analog_in_p = '1' and analog_in_n = '0') else
+               '0' when (analog_in_p = '0' and analog_in_n = '1') else
+               analog_in_p; -- tie-break
+
   -- Device Under Test (entity instantiation with new interface)
   i_dut : entity work.rc_adc_top
     generic map(
-      GC_DECIMATION      => 16,         -- Low decimation for initial test
-      GC_DATA_WIDTH      => C_DATA_WIDTH,
-      GC_ENABLE_MAJORITY => true
+      GC_DECIMATION => 16,              -- Low decimation for initial test
+      GC_DATA_WIDTH => C_DATA_WIDTH
     )
     port map(
       clk          => clk,
@@ -69,8 +75,7 @@ begin
       mem_wdata    => mem_wdata,
       mem_rdata    => mem_rdata,
       mem_rdvalid  => mem_rdvalid,
-      analog_in_p  => analog_in_p,
-      analog_in_n  => analog_in_n,
+      analog_in    => analog_in,
       dac_out      => dac_out,
       sample_data  => sample_data,
       sample_valid => sample_valid

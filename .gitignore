@@ -286,3 +286,4 @@ Thumbs.db
 /adc_system/adc_system_inst.vhd
 /adc_system/adc_system_bb.v
 /cov_html
+coverage_data.ucdb

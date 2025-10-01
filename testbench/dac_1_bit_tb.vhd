@@ -19,7 +19,7 @@ architecture behavioral of dac_1_bit_tb is
   signal sim_finished : boolean   := false;
 
 begin
-  i_uut : entity work.dac_1_bit
+  i_dut : entity work.dac_1_bit
     port map(
       clk     => clk,
       reset   => reset,

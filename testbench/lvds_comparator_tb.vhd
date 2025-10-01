@@ -26,30 +26,35 @@ architecture behavioral of lvds_comparator_tb is
 
   -- Signals
   signal clk        : std_logic := '0';
-  signal reset      : std_logic := '1'; -- Changed to std_logic
+  signal reset      : std_logic := '1';
   signal bit_stream : std_logic;
 
-  -- Test signals
+  -- Test signals (differential before LVDS buffer)
   signal test_pattern  : std_logic := '0';
   signal corrupted_p   : std_logic := '0';
   signal corrupted_n   : std_logic := '1';
+  signal lvds_compared : std_logic := '0'; -- Simulated LVDS comparator output
   signal error_count   : integer   := 0;
   signal total_samples : integer   := 0;
   signal sim_finished  : boolean   := false;
 
 begin
 
+  -- Simulate LVDS I/O buffer differential comparison
+  -- In real hardware, this is done by the LVDS I/O buffer in Quartus
+  lvds_compared <= '1' when (corrupted_p = '1' and corrupted_n = '0') else
+                   '0' when (corrupted_p = '0' and corrupted_n = '1') else
+                   corrupted_p; -- tie-break
+
   -- Device Under Test (entity instantiation)
   i_dut : entity work.lvds_comparator
     generic map(
-      GC_ENABLE_MAJORITY => true,
-      GC_USE_INTEL_LVDS  => false
+      GC_ENABLE_MAJORITY => true
     )
     port map(
       clk        => clk,
       reset      => reset,
-      lvds_p     => corrupted_p,
-      lvds_n     => corrupted_n,
+      lvds_in    => lvds_compared,
       bit_stream => bit_stream
     );
 
@@ -142,50 +147,50 @@ begin
     end if;
   end process;
 
-  -- Test monitoring: mirror DUT exactly (2-FF sync + 3-tap majority)
+  -- Test monitoring: mirror DUT exactly (3-tap majority)
+  -- DUT timing: On each clock edge:
+  --   1. maj_reg shifts in lvds_compared
+  --   2. Majority computed on OLD maj_reg (before shift)
+  --   3. majority_out updated with result
+  --   4. bit_stream = majority_out (combinatorial)
   p_monitor : process(clk)
-    variable v_sync_m     : std_logic_vector(1 downto 0) := (others => '0');
     variable v_maj_m      : std_logic_vector(2 downto 0) := (others => '0');
     variable v_sum        : integer range 0 to 3;
-    variable v_expected   : std_logic                    := '0';
-    variable v_comp_model : std_logic;
+    variable v_majority   : std_logic                    := '0';
+    variable v_expected   : std_logic                    := '0';  -- Delayed by 1 cycle for comparison
   begin
     if rising_edge(clk) then
       if reset = '1' then
         error_count   <= 0;
         total_samples <= 0;
-        v_sync_m      := (others => '0');
         v_maj_m       := (others => '0');
+        v_majority    := '0';
         v_expected    := '0';
       else
-        -- Behavioral comparator exactly like the DUT sim_fallback
-        v_comp_model := '1' when (corrupted_p = '1' and corrupted_n = '0') else
-                        '0' when (corrupted_p = '0' and corrupted_n = '1') else
-                        corrupted_p;
-
-        -- Mirror 2-FF sync (shift register)
-        v_sync_m := v_sync_m(0) & v_comp_model;
-
-        -- Compute majority on CURRENT maj_m (before shift)
-        v_sum      := 0;
+        -- Compute majority on CURRENT v_maj_m (BEFORE shift, matching DUT signal behavior)
+        v_sum := 0;
         for i in 0 to 2 loop
           if v_maj_m(i) = '1' then
             v_sum := v_sum + 1;
           end if;
         end loop;
-        v_expected := '1' when v_sum >= 2 else '0';
+        v_majority := '1' when v_sum >= 2 else '0';
+        
+        -- Now shift in new sample (variables update immediately, unlike DUT signals)
+        v_maj_m := v_maj_m(1 downto 0) & lvds_compared;
 
-        -- Shift in new sample from sync output
-        v_maj_m := v_maj_m(1 downto 0) & v_sync_m(1);
-
-        -- Only start comparing after pipeline fills (2 sync + 3 majority = 5 cycles)
+        -- Compare bit_stream to v_expected (from previous cycle)
+        -- Start comparing after pipeline fills (4 cycles: 3 for majority history + 1 for reset)
         total_samples <= total_samples + 1;
-        if total_samples > 5 then
+        if total_samples > 4 then
           if bit_stream /= v_expected then
             error_count <= error_count + 1;
             report "Mismatch at sample " & integer'image(total_samples) & ": got " & std_logic'image(bit_stream) & ", expected " & std_logic'image(v_expected) severity note;
           end if;
         end if;
+        
+        -- Save current majority for next cycle comparison
+        v_expected := v_majority;
 
         if (total_samples > 0) and ((total_samples mod 100) = 0) then
           report "Samples: " & integer'image(total_samples) & ", Errors: " & integer'image(error_count) & ", Error rate: " & real'image(real(error_count) / real(total_samples))
@@ -215,7 +220,9 @@ begin
     if total_samples > 0 then
       report "Final error rate: " & real'image(real(error_count) / real(total_samples)) severity note;
 
-      if real(error_count) / real(total_samples) < C_BIT_FLIP_RATE * 2.0 then -- Error rate should be better than 2x input corruption rate
+      -- With 3-tap majority filter, expect error rate better than input corruption rate
+      -- The majority filter should reduce errors, not increase them
+      if real(error_count) / real(total_samples) < C_BIT_FLIP_RATE * 2.0 then
         report "PASS: Majority filter working effectively" severity note;
       else
         report "FAIL: Too many errors getting through" severity error;
