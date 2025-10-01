@@ -18,8 +18,9 @@ entity tdc_quantizer_tb is
 end entity;
 
 architecture behavioral of tdc_quantizer_tb is
-  constant C_CLK_PERIOD : time     := 10 ns; -- 100 MHz
-  constant C_TDC_BITS   : positive := 8;
+  constant C_CLK_PERIOD   : time     := 10 ns; -- 100 MHz
+  constant C_TDC_BITS     : positive := 8;
+  constant C_COUNTER_BITS : positive := 12; -- Smaller counter for faster overflow test
 
   signal clk       : std_logic := '0';
   signal reset     : std_logic := '1';
@@ -38,7 +39,7 @@ begin
   i_dut : entity work.tdc_quantizer
     generic map(
       GC_TDC_BITS     => C_TDC_BITS,
-      GC_COUNTER_BITS => 16
+      GC_COUNTER_BITS => C_COUNTER_BITS -- Use smaller counter for faster test
     )
     port map(
       clk       => clk,
@@ -72,7 +73,7 @@ begin
     while test_suite loop
       if run("basic_test") then
         info("Running basic test for tdc_quantizer_tb");
-        wait for C_CLK_PERIOD * 2000;   -- enough for all subtests
+        wait for C_CLK_PERIOD * 5200;   -- Need time for counter to reach 4095 + all other tests
         check(measurement_count > 0, "At least one measurement should be captured");
       end if;
     end loop;
@@ -178,6 +179,25 @@ begin
       stop_measure;
       wait for C_CLK_PERIOD * 2;
     end loop;
+
+    -- 8) Test counter hard overflow (C_COUNTER_BITS = 12, so counter maxes at 4095)
+    report "Test 8: counter hard overflow (no stop signal)" severity note;
+    start_measure;
+    -- Wait for counter to reach exactly 4095 (all '1's) which triggers overflow
+    -- Counter increments once per clock in ST_MEASURING
+    -- Need: sync (3 clks) + 4096 counts (0 to 4095) + detection/overflow (1 clk) + margin
+    wait for C_CLK_PERIOD * 4105;
+    -- Overflow should have been triggered automatically by now
+    wait for C_CLK_PERIOD * 10;
+
+    -- 9) Test disable/re-enable
+    report "Test 9: disable during measurement" severity note;
+    start_measure;
+    wait for C_CLK_PERIOD * 10;
+    enable <= '0';
+    wait for C_CLK_PERIOD * 5;
+    enable <= '1';
+    wait for C_CLK_PERIOD * 5;
 
     report "TDC Quantizer Test Complete" severity note;
     wait;

@@ -57,7 +57,7 @@ begin
   -- In real hardware, this is done by the LVDS I/O buffer in Quartus
   analog_in <= '1' when (analog_in_p = '1' and analog_in_n = '0') else
                '0' when (analog_in_p = '0' and analog_in_n = '1') else
-               analog_in_p; -- tie-break
+               analog_in_p;             -- tie-break
 
   -- Device Under Test (entity instantiation with new interface)
   i_dut : entity work.rc_adc_top
@@ -129,6 +129,15 @@ begin
 
         mem_read(1, v_read_data);       -- Read status
         info("Status: " & to_string(v_read_data));
+
+        mem_read(2, v_read_data);       -- Read valid counter
+        info("Valid Counter: " & to_string(v_read_data));
+
+        mem_read(3, v_read_data);       -- Read activity counter
+        info("Activity Counter: " & to_string(v_read_data));
+
+        mem_read(255, v_read_data);     -- Read invalid address (tests 'others' branch)
+        info("Invalid addr (should be 0): " & to_string(v_read_data));
 
         wait for C_CLK_PERIOD * 1000;   -- Allow more time for ADC processing
         check(true, "Basic test completed");
