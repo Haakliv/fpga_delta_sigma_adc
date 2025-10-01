@@ -8,16 +8,18 @@
 
 # Delta-Sigma ADC analog input (differential LVDS)
 set_location_assignment PIN_V6 -to ANALOG_IN       ; # CRUVI analog input
-set_instance_assignment -name IO_STANDARD "1.2-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN
+set_instance_assignment -name IO_STANDARD "1.3-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN
 
 # DAC Feedback Output - HSO (HS Serial Out)
+# Critical ΣΔ loop path: pack register into IO cell for 1-cycle latency
 set_location_assignment PIN_N6 -to DAC_OUT         ; # HSO (CRUVI pin 6)
-set_instance_assignment -name IO_STANDARD "1.2-V" -to DAC_OUT
+set_instance_assignment -name IO_STANDARD "1.3-V" -to DAC_OUT
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to DAC_OUT
 set_instance_assignment -name SLEW_RATE 0 -to DAC_OUT
 
 # Debug test pin
 set_location_assignment PIN_U4 -to TEST_PIN        ; # Test/debug output
-set_instance_assignment -name IO_STANDARD "1.2-V" -to TEST_PIN
+set_instance_assignment -name IO_STANDARD "1.3-V" -to TEST_PIN
 set_instance_assignment -name SLEW_RATE 0 -to TEST_PIN
 # ========================================================================
 # SYSTEM CLOCKS AND CONTROL
@@ -25,7 +27,7 @@ set_instance_assignment -name SLEW_RATE 0 -to TEST_PIN
 
 # Main 25 MHz oscillator (from AXE5000 board)
 set_location_assignment PIN_A7 -to CLK_25M_C
-set_instance_assignment -name IO_STANDARD "1.2-V" -to CLK_25M_C
+set_instance_assignment -name IO_STANDARD "1.3-V" -to CLK_25M_C
 
 # UART connections (from AXE5000 board), RX not used currently
 #set_location_assignment PIN_AG23 -to UART_RX

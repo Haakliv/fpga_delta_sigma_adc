@@ -13,8 +13,11 @@ entity axe5000_top is
     -- UART capacity: 115200 / 10 bits = 11,520 bytes/sec
     -- Bytes per sample: 6 (4 hex + CR + LF)
     -- Max sample rate: 11,520 / 6 = 1,920 samples/sec
-    -- Safe OSR: 65536 gives 1,526 Hz sample rate (79.5% UART utilization)
-    GC_ADC_DECIMATION : positive := 65536 -- 2^16 decimation for safe UART bandwidth
+    -- Optimized OSR: 57344 gives 1,745 Hz sample rate (91% UART utilization)
+    -- 
+    -- Signal chain: CIC (1745 Hz) → Sinc³ Equalizer (1745 Hz) → Lowpass (1745 Hz)
+    -- Non-decimating filters preserve full bandwidth (Nyquist = 872 Hz)
+    GC_ADC_DECIMATION : positive := 57344 -- 7 × 2^13 for optimal UART bandwidth
   );
   port(
     -- Clock and Reset
@@ -37,7 +40,7 @@ architecture rtl of axe5000_top is
 
   constant C_ADC_DATA_WIDTH : positive := 16;
 
-  signal sysclk_pd     : std_logic;
+  signal sysclk_pd     : std_logic;     -- 100 MHz system clock from PLL
   signal rst           : std_logic;
   signal rst_n_from_pd : std_logic;
 

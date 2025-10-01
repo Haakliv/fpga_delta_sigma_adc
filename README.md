@@ -85,16 +85,44 @@ DAC_OUT   → RC integrator → Comparator reference
 ## Signal Description
 
 ### ADC Operation
-1. **Sigma-Delta Modulation**: External comparator creates 1-bit stream
-2. **CIC Decimation**: Digital filter reduces sample rate and increases resolution
-3. **Avalon Interface**: NIOS-V reads filtered data via memory-mapped registers
-4. **UART Output**: ADC samples and heartbeat transmitted to PC for analysis
+1. **Sigma-Delta Modulation**: External comparator creates 1-bit stream at 100 MHz
+2. **CIC Decimation**: 3rd-order sinc decimator (OSR=57,344) → 1,745 Hz output
+3. **Sinc³ Equalization**: 31-tap FIR compensates CIC droop (non-decimating)
+4. **Anti-Alias Filtering**: 95-tap linear-phase lowpass (Hamming window, Fc=750Hz)
+5. **Avalon Interface**: NIOS-V reads filtered data via memory-mapped registers
+6. **UART Output**: ADC samples transmitted to PC at 1,745 Hz (91% UART bandwidth)
+
+### Signal Processing Chain Details
+
+**CIC Decimator (OSR = 57,344 = 7 × 2^13)**
+- Input: 1-bit bitstream at 100 MHz
+- Output: 16-bit samples at 1,745 Hz
+- Architecture: 3 integrators + 3 comb filters
+- Gain: OSR³ with exact scaling via bit shifts
+- Rounding: Added before final scaling to minimize quantization noise
+
+**Sinc³ Equalizer (31-tap FIR, non-decimating)**
+- Purpose: Compensates CIC's sinc³(f/Fs) droop
+- Passband: Flattens response from DC to 0.5 × Nyquist (872 Hz)
+- Coefficients: Q1.15 format (16-bit signed fixed-point)
+- Implementation: Symmetric structure exploits h[i] = h[30-i]
+- Latency: 15 samples (8.6 ms at 1,745 Hz)
+
+**Anti-Alias Lowpass (95-tap FIR, linear-phase)**
+- Purpose: Attenuate frequencies above Nyquist before final output
+- Design: Hamming window, Fc = 750 Hz (0.43 × Fs)
+- Passband: DC-700 Hz with <0.5 dB ripple
+- Stopband: >872 Hz (Nyquist) with >70 dB attenuation
+- Coefficients: Q1.15 format with symmetric structure
+- Latency: 47 samples (27 ms at 1,745 Hz)
 
 ### Expected Performance
-- Sample Rate: ~1.5 kSPS (100MHz / 64 decimation factor)
-- Resolution: ~12-14 bits effective
-- Latency: ~64 clock cycles for decimation filter
-- Heartbeat: "Active" message every 1 second
+- Sample Rate: **1,745 Hz** (100 MHz / 57,344)
+- Resolution: ~14-16 bits effective (depends on analog input quality)
+- Latency: ~94 samples total (CIC=28, Eq=15, LP=47, Avalon=4)
+- UART Utilization: **91%** (1,745 Hz × 6 bytes = 10,470 baud of 115,200)
+- Passband Flatness: <0.5 dB from DC to 700 Hz
+- Stopband Rejection: >70 dB above 872 Hz (Nyquist frequency)
 
 ## Software Features
 

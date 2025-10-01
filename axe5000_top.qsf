@@ -1,3 +1,4 @@
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to DAC_OUT -entity axe5000_top
 set_instance_assignment -name SLEW_RATE 2 -to UART_TX -entity axe5000_top
 # --------------------------------------------------------------------------
 # AXE5000 / Agilex 5 — Clean QSF (ADC on B0, clock on A7, UART 3v3)
@@ -30,10 +31,8 @@ set_global_assignment -name POWER_APPLY_THERMAL_MARGIN ADDITIONAL
 # -------- Sources / IP --------
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 set_global_assignment -name VHDL_FILE sources/clk_rst_pkg.vhd
-set_global_assignment -name VHDL_FILE sources/addr_decoder.vhd
 set_global_assignment -name VHDL_FILE sources/tdc_quantizer.vhd
 set_global_assignment -name VHDL_FILE sources/rc_adc_top.vhd
-set_global_assignment -name VHDL_FILE sources/lvds_comparator.vhd
 set_global_assignment -name VHDL_FILE sources/fir_lowpass.vhd
 set_global_assignment -name VHDL_FILE sources/fir_equalizer.vhd
 set_global_assignment -name VHDL_FILE sources/dac_1_bit.vhd
@@ -59,7 +58,7 @@ set_global_assignment -name QSYS_FILE adc_system.qsys
 
 # 25 MHz user clock (A7, 1.2-V bank)
 set_location_assignment PIN_A7 -to CLK_25M_C
-set_instance_assignment -name IO_STANDARD "1.2-V" -to CLK_25M_C -entity axe5000_top
+set_instance_assignment -name IO_STANDARD "1.3-V" -to CLK_25M_C -entity axe5000_top
 
 # DIP switches (1.2-V bank, with weak pull-ups)
 
@@ -71,15 +70,15 @@ set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_TX -entity axe
 
 # DAC feedback output on HSIO single-ended (N6) — follow VADJ rail
 set_location_assignment PIN_N6 -to DAC_OUT
-set_instance_assignment -name IO_STANDARD "1.2-V" -to DAC_OUT -entity axe5000_top
+set_instance_assignment -name IO_STANDARD "1.3-V" -to DAC_OUT -entity axe5000_top
 # If VADJ is 1.3 V in hardware, change to:
 # set_instance_assignment -name IO_STANDARD "1.3-V" -to DAC_OUT -entity axe5000_top
 set_instance_assignment -name SLEW_RATE 0 -to DAC_OUT -entity axe5000_top
 set_location_assignment PIN_U4 -to TEST_PIN
-set_instance_assignment -name IO_STANDARD "1.2-V" -to TEST_PIN -entity axe5000_top
+set_instance_assignment -name IO_STANDARD "1.3-V" -to TEST_PIN -entity axe5000_top
 set_instance_assignment -name SLEW_RATE 0 -to TEST_PIN -entity axe5000_top
 set_location_assignment PIN_V6 -to ANALOG_IN
-set_instance_assignment -name IO_STANDARD "1.2-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN -entity axe5000_top
+set_instance_assignment -name IO_STANDARD "1.3-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN -entity axe5000_top
 set_global_assignment -name IP_FILE ip/adc_system/adc_system_rs232_0.ip
 set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to UART_TX -entity axe5000_top
 set_location_assignment PIN_A12 -to USER_BTN

@@ -48,10 +48,11 @@ set_output_delay -clock [get_clocks VCLK_UART] -max 0.0 -source_latency_included
 set_output_delay -clock [get_clocks VCLK_UART] -min 0.0 -source_latency_included [get_ports {UART_TX}]
 set_false_path -to   [get_ports UART_TX]
 
-# Output (DAC)
-set_output_delay -clock [get_clocks VCLK_DAC]  -max 0.0 -source_latency_included [get_ports {DAC_OUT}]
-set_output_delay -clock [get_clocks VCLK_DAC]  -min 0.0 -source_latency_included [get_ports {DAC_OUT}]
-set_false_path -to   [get_ports DAC_OUT]
+# Output (DAC) - Critical ΣΔ feedback path with 1-cycle latency
+# Fast output register packing ensures loop stability  
+# Target: <2ns setup/hold from system clock to pad
+set_output_delay -clock [get_clocks {adc_system|pll_0|iopll_0_outclk0}] -max 2.0 [get_ports {DAC_OUT}]
+set_output_delay -clock [get_clocks {adc_system|pll_0|iopll_0_outclk0}] -min -2.0 [get_ports {DAC_OUT}]
 
 # DIP switches (asynchronous user inputs)
 #set_false_path -from [get_ports {DIP_SW[*]}]

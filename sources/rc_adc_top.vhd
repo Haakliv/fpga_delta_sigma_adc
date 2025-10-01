@@ -42,10 +42,7 @@ end entity;
 architecture rtl of rc_adc_top is
 
   -- Internal signals
-  signal lvds_bit_stream : std_logic;   -- Direct output from LVDS comparator
-
-  -- Path A: Fast feedback to DAC (minimize loop delay)
-  signal dac_feedback : std_logic := '0';
+  signal lvds_bit_stream : std_logic;   -- Direct output from LVDS comparator (pass-through)
 
   -- Path B: Synchronized path for decimator (noise immunity)
   signal decimator_sync : std_logic_vector(1 downto 0) := (others => '0');
@@ -64,39 +61,27 @@ architecture rtl of rc_adc_top is
 
 begin
 
-  -- LVDS input stage
-  -- Note: GC_ENABLE_MAJORITY is set to FALSE to minimize loop delay
-  -- The LVDS I/O buffer (configured in Quartus) performs P vs N comparison
-  -- This module just optionally filters the resulting bit stream
-  i_lvds : entity work.lvds_comparator
-    generic map(
-      GC_ENABLE_MAJORITY => false       -- Disable majority filter for minimum latency
-    )
-    port map(
-      clk        => clk,
-      reset      => reset,
-      lvds_in    => analog_in,
-      bit_stream => lvds_bit_stream
-    );
+  -- ========================================================================
+  -- LVDS Comparator Input
+  -- ========================================================================
+  -- The LVDS I/O buffer (configured in Quartus with LVDS_E_3V input standard)
+  -- performs true differential comparison: analog_in = (P > N) ? '1' : '0'
+  -- 
+  -- This is a DIRECT PASS-THROUGH (combinational) to minimize ΣΔ loop delay
+  -- No register here - the only FF in the feedback loop is in dac_1_bit
+  lvds_bit_stream <= analog_in;
 
   -- ========================================================================
   -- CRITICAL: Dual-path architecture for optimal sigma-delta performance
   -- ========================================================================
-  -- Path A: Fast DAC feedback (1 FF) - Minimize loop delay for modulator stability
+  -- Path A: Direct DAC feedback (0 FF comb, 1 FF in DAC) - Minimize loop delay
   -- Path B: Synchronized decimator input (2 FF) - Metastability protection
+  -- Total ΣΔ loop delay = 1 cycle (DAC output register only)
   -- ========================================================================
 
-  -- Path A: Single-register feedback to DAC (minimize loop delay)
-  p_dac_feedback : process(clk)
-  begin
-    if rising_edge(clk) then
-      if reset = C_RST_ACTIVE then
-        dac_feedback <= '0';
-      else
-        dac_feedback <= lvds_bit_stream; -- Only 1 clock cycle delay
-      end if;
-    end if;
-  end process;
+  -- Path A: DIRECT connection to DAC (no additional FF)
+  -- The DAC entity contains the only register in the feedback loop
+  -- Total loop: LVDS → combinational → DAC FF → output (1 cycle)
 
   -- Path B: 2-FF synchronizer for decimator (metastability protection)
   p_decimator_sync : process(clk)
@@ -110,12 +95,12 @@ begin
     end if;
   end process;
 
-  -- DAC feedback at full sampling rate (Path A - fast feedback)
+  -- DAC feedback at full sampling rate (Path A - direct connection)
   i_dac : entity work.dac_1_bit
     port map(
       clk     => clk,
       reset   => reset,
-      data_in => dac_feedback,          -- Single-cycle delayed feedback
+      data_in => lvds_bit_stream,       -- DIRECT connection (0 combinational delay)
       dac_out => dac_out
     );
 
@@ -133,7 +118,6 @@ begin
       valid    => cic_valid_out
     );
 
-  -- Decimation by 2 equalizer
   i_eq : entity work.fir_equalizer
     generic map(
       GC_INPUT_WIDTH  => GC_DATA_WIDTH,
@@ -179,7 +163,7 @@ begin
         mem_rdvalid <= '0';
 
         if mem_cs = '1' and mem_rd = '1' then
-          case to_integer(unsigned(mem_addr(7 downto 0))) is -- TODO: Only 2/5 arms taken in TB
+          case to_integer(unsigned(mem_addr(7 downto 0))) is
             when 0 =>                   -- ADC Data Register (lower 16 bits)
               mem_rdata(GC_DATA_WIDTH - 1 downto 0) <= lp_data_out;
             when 1 =>                   -- Status Register
