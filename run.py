@@ -37,11 +37,9 @@ try:
     source_files = [
         "clk_rst_pkg.vhd",
         "dsp_utils_pkg.vhd",        # Package must be compiled before modules that use it
-        "dac_1_bit.vhd", 
         "cic_sinc3_decimator.vhd",
         "fir_equalizer.vhd",
         "fir_lowpass.vhd",
-        # lvds_comparator.vhd removed - now just a wire in rc_adc_top
         "rc_adc_top.vhd",
         "tdc_quantizer.vhd"
     ]
@@ -93,10 +91,8 @@ def main():
 
         inst_args = [
             "-instance=/cic_sinc3_decimator_tb/i_dut",
-            "-instance=/dac_1_bit_tb/i_dut",
             "-instance=/fir_equalizer_tb/i_dut",
             "-instance=/fir_lowpass_tb/i_dut",
-            # lvds_comparator_tb removed - now just a wire in rc_adc_top
             "-instance=/rc_adc_top_tb/i_dut",
             "-instance=/tdc_quantizer_tb/i_dut",
         ]

@@ -47,6 +47,9 @@ architecture rtl of rc_adc_top is
   -- Path B: Synchronized path for decimator (noise immunity)
   signal decimator_sync : std_logic_vector(1 downto 0) := (others => '0');
 
+  -- DAC feedback register (1-bit DAC implementation)
+  signal dac_feedback : std_logic := '0';
+
   signal cic_data_out  : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
   signal cic_valid_out : std_logic;
   signal eq_data_out   : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
@@ -59,6 +62,10 @@ architecture rtl of rc_adc_top is
   signal valid_counter    : unsigned(7 downto 0)         := (others => '0');
   signal status_reg       : std_logic_vector(7 downto 0) := (others => '0');
 
+  -- Altera synthesis attributes for proper synchronizer recognition
+  attribute ALTERA_ATTRIBUTE                   : string;
+  attribute ALTERA_ATTRIBUTE of decimator_sync : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
+
 begin
 
   -- ========================================================================
@@ -68,7 +75,7 @@ begin
   -- performs true differential comparison: analog_in = (P > N) ? '1' : '0'
   -- 
   -- This is a DIRECT PASS-THROUGH (combinational) to minimize ΣΔ loop delay
-  -- No register here - the only FF in the feedback loop is in dac_1_bit
+  -- No register here - the only FF in the feedback loop is in p_dac_feedback process
   lvds_bit_stream <= analog_in;
 
   -- ========================================================================
@@ -79,30 +86,30 @@ begin
   -- Total ΣΔ loop delay = 1 cycle (DAC output register only)
   -- ========================================================================
 
-  -- Path A: DIRECT connection to DAC (no additional FF)
-  -- The DAC entity contains the only register in the feedback loop
+  -- Path A: 1-bit DAC feedback implementation (single register)
+  -- This is the ONLY register in the feedback loop
   -- Total loop: LVDS → combinational → DAC FF → output (1 cycle)
-
-  -- Path B: 2-FF synchronizer for decimator (metastability protection)
-  p_decimator_sync : process(clk)
+  p_dac_feedback : process(clk)
   begin
     if rising_edge(clk) then
       if reset = C_RST_ACTIVE then
-        decimator_sync <= (others => '0');
+        dac_feedback <= '0';
       else
-        decimator_sync <= decimator_sync(0) & lvds_bit_stream;
+        dac_feedback <= lvds_bit_stream; -- DIRECT connection (0 sequential delay)
       end if;
     end if;
   end process;
 
-  -- DAC feedback at full sampling rate (Path A - direct connection)
-  i_dac : entity work.dac_1_bit
-    port map(
-      clk     => clk,
-      reset   => reset,
-      data_in => lvds_bit_stream,       -- DIRECT connection (0 combinational delay)
-      dac_out => dac_out
-    );
+  dac_out <= dac_feedback;
+
+  -- Path B: 2-FF synchronizer for decimator (metastability protection)
+  -- NO synchronous reset to minimize delay and maximize metastability protection
+  p_decimator_sync : process(clk)
+  begin
+    if rising_edge(clk) then
+      decimator_sync <= decimator_sync(0) & lvds_bit_stream;
+    end if;
+  end process;
 
   -- CIC SINC3 decimator (Path B - synchronized input)
   i_cic : entity work.cic_sinc3_decimator
