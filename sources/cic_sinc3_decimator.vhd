@@ -28,12 +28,12 @@ architecture rtl of cic_sinc3_decimator is
 
   subtype T_ACC is signed(C_ACC_WIDTH - 1 downto 0);
 
-  -- Exact reciprocal scaling for non-power-of-2 R
-  -- For R=57344: G_actual = R^3 = 188,894,659,133,440
-  -- Reciprocal: round(2^64 / G_actual) = 97,656
-  -- Usage: (v_acc * 97656) >> 64 gives exact scaling
-  constant C_SCALE_RECIP : signed(63 downto 0) := to_signed(97656, 64);
-  constant C_RECIP_SHIFT : natural             := 64;
+  -- Scaling: Remove CIC gain to fit output in GC_OUTPUT_WIDTH
+  -- For SINC3, gain G = R^3
+  -- For R=57344: log2(G) = 3*log2(57344) ≈ 47.4 bits
+  -- We have C_GROWTH_BITS = 48, plus 4 guard bits = 52 bits total
+  -- To get 16-bit output: shift down by (C_ACC_WIDTH - GC_OUTPUT_WIDTH)
+  constant C_SCALE_SHIFT : natural := C_ACC_WIDTH - GC_OUTPUT_WIDTH;
 
   -- Integrators
   signal int1, int2, int3 : T_ACC := (others => '0');
@@ -146,33 +146,22 @@ begin
   -- ========================================================================
   -- Pipeline Stage 2: Scaling and saturation
   -- ========================================================================
-  -- Performs the reciprocal multiplication, rounding, and saturation
-  -- This is the computationally heavy part, so it gets its own pipeline stage
+  -- Simple arithmetic shift to scale CIC output to GC_OUTPUT_WIDTH
+  -- Shift amount = C_ACC_WIDTH - GC_OUTPUT_WIDTH (removes growth + guard bits)
   -- ========================================================================
   p_scale_stage : process(clk)
-    variable v_product : signed(C_ACC_WIDTH + C_RECIP_SHIFT - 1 downto 0);
-    variable v_scaled  : signed(C_ACC_WIDTH - 1 downto 0);
+    variable v_shifted : signed(GC_OUTPUT_WIDTH - 1 downto 0);
   begin
     if rising_edge(clk) then
       if reset = '1' then
         y_out   <= (others => '0');
         y_valid <= '0';
       elsif comb3_valid = '1' then
-        -- Exact reciprocal scaling for R=57344 (non-power-of-2)
-        -- Multiply by reciprocal: (v * 97826) >> 64
-        -- Use signed-symmetric rounding (less bias for negative values)
-        v_product := comb3_out * C_SCALE_RECIP;
-        if v_product(v_product'length - 1) = '1' then
-          -- Negative: subtract rounding bias
-          v_product := v_product - shift_left(to_signed(1, v_product'length), C_RECIP_SHIFT - 1);
-        else
-          -- Positive: add rounding bias
-          v_product := v_product + shift_left(to_signed(1, v_product'length), C_RECIP_SHIFT - 1);
-        end if;
-        v_scaled := resize(shift_right(v_product, C_RECIP_SHIFT), C_ACC_WIDTH);
+        -- Arithmetic right shift to remove CIC gain
+        -- Takes MSBs of comb output (with sign extension)
+        v_shifted := resize(shift_right(comb3_out, C_SCALE_SHIFT), GC_OUTPUT_WIDTH);
 
-        -- Saturate to output width (numeric_std resize wraps, we need clipping)
-        y_out   <= saturate(v_scaled, GC_OUTPUT_WIDTH);
+        y_out   <= v_shifted;
         y_valid <= '1';
       else
         y_valid <= '0';
