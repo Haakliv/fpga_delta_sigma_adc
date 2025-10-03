@@ -35,11 +35,14 @@ lib = vu.add_library("fpga_lib")
 try:
     # Add all source files (packages first, then modules)
     source_files = [
-        "clk_rst_pkg.vhd",
-        "dsp_utils_pkg.vhd",        # Package must be compiled before modules that use it
+        "common_pkg.vhd",           # Common utilities (clog2, etc.)
+        "clk_rst_pkg.vhd",          # Synthesizable clock/reset types
+        "clk_rst_tb_pkg.vhd",       # Testbench utilities (non-synthesizable)
+        "dsp_utils_pkg.vhd",        # DSP utilities (saturate, map_bipolar)
         "cic_sinc3_decimator.vhd",
         "fir_equalizer.vhd",
         "fir_lowpass.vhd",
+        "uart_sample_streamer.vhd",
         "rc_adc_top.vhd",
         "tdc_quantizer.vhd"
     ]

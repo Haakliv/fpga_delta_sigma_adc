@@ -7,6 +7,7 @@ context vunit_lib.vunit_context;
 
 library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
+use fpga_lib.clk_rst_tb_pkg.all;
 
 entity cic_sinc3_decimator_tb is
   generic(runner_cfg : string);

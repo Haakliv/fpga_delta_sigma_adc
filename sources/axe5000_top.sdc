@@ -21,8 +21,9 @@ create_clock -name {clk_25m} -period 40.000 [get_ports {CLK_25M_C}]
 derive_clock_uncertainty
 
 # Virtual clocks for async outputs
-create_clock -name VCLK_UART -period 100.000
-create_clock -name VCLK_DAC  -period 100.000
+create_clock -name VCLK_UART        -period 100.000
+create_clock -name VCLK_DAC         -period 100.000
+create_clock -name VCLK_TEST_PIN    -period 100.000
 
 # JTAG TCK clock for debugging (typical JTAG frequency)
 create_clock -name {altera_reserved_tck} -period 100.000 -waveform { 0.000 50.000 } [get_ports {altera_reserved_tck}]
@@ -70,7 +71,9 @@ set_false_path -from [get_registers "*"] -to [get_registers "*jtag_master*"]
 set_false_path -from [get_clocks *] -to [get_clocks {altera_reserved_tck}]
 
 # Test pin (debug/test output, no timing requirements) - specific constraint
-#set_false_path -to [get_ports {TEST_PIN}]
+set_output_delay -clock [get_clocks VCLK_TEST_PIN] -max 0.0 -source_latency_included [get_ports {TEST_PIN}]
+set_output_delay -clock [get_clocks VCLK_TEST_PIN] -min 0.0 -source_latency_included [get_ports {TEST_PIN}]
+set_false_path -to [get_ports {TEST_PIN}]
 
 #**************************************************************
 # Design Rule Waivers

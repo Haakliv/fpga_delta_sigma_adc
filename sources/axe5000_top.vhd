@@ -47,41 +47,9 @@ architecture rtl of axe5000_top is
   signal adc_sample_data  : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
   signal adc_sample_valid : std_logic;
 
-  signal sample_capture : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0) := (others => '0');
-  signal sample_staged  : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0) := (others => '0');
-  signal sample_latched : std_logic                                       := '0';
-  signal sample_take    : std_logic                                       := '0';
-
-  type   T_UART_STATE is (
-    ST_UART_IDLE,
-    ST_UART_SEND_N3,
-    ST_UART_SEND_N2,
-    ST_UART_SEND_N1,
-    ST_UART_SEND_N0,
-    ST_UART_SEND_CR,
-    ST_UART_SEND_LF
-  );
-  signal uart_state   : T_UART_STATE := ST_UART_IDLE;
-
-  signal uart_tx_data  : std_logic_vector(7 downto 0) := (others => '0');
-  signal uart_tx_valid : std_logic                    := '0';
+  signal uart_tx_data  : std_logic_vector(7 downto 0);
+  signal uart_tx_valid : std_logic;
   signal uart_tx_ready : std_logic;
-
-  constant C_UART_CR : std_logic_vector(7 downto 0) := x"0D";
-  constant C_UART_LF : std_logic_vector(7 downto 0) := x"0A";
-
-  function to_hex_ascii(nibble : std_logic_vector(3 downto 0)) return std_logic_vector is
-    variable v_value : integer range 0 to 15;
-    variable v_ascii : std_logic_vector(7 downto 0);
-  begin
-    v_value := to_integer(unsigned(nibble));
-    if v_value < 10 then
-      v_ascii := std_logic_vector(to_unsigned(v_value + 48, 8));
-    else
-      v_ascii := std_logic_vector(to_unsigned(v_value - 10 + 65, 8));
-    end if;
-    return v_ascii;
-  end function;
 
   component adc_system is               -- @suppress
     port(
@@ -106,7 +74,8 @@ architecture rtl of axe5000_top is
 
 begin
 
-  TEST_PIN <= ANALOG_IN;
+  TEST_PIN <= DAC_OUT;
+  
 
   i_niosv : adc_system
     port map(
@@ -128,6 +97,9 @@ begin
       sysclk_clk                     => sysclk_pd
     );
 
+  rst <= not rst_n_from_pd;
+
+  -- ADC core with delta-sigma modulator and filter chain
   i_adc : entity work.rc_adc_top
     generic map(
       GC_DECIMATION => GC_ADC_DECIMATION,
@@ -149,96 +121,19 @@ begin
       sample_valid => adc_sample_valid
     );
 
-  rst <= not rst_n_from_pd;
-
-  p_sample_capture : process(sysclk_pd)
-  begin
-    if rising_edge(sysclk_pd) then
-      if rst = '1' then
-        sample_capture <= (others => '0');
-        sample_latched <= '0';
-      else
-        if sample_take = '1' then
-          sample_latched <= '0';
-        end if;
-
-        if adc_sample_valid = '1' then
-          sample_capture <= adc_sample_data;
-          sample_latched <= '1';
-        end if;
-      end if;
-    end if;
-  end process;
-
-  p_uart_sm : process(sysclk_pd)
-  begin
-    if rising_edge(sysclk_pd) then
-      if rst = '1' then
-        uart_state    <= ST_UART_IDLE;
-        uart_tx_data  <= (others => '0');
-        uart_tx_valid <= '0';
-        sample_staged <= (others => '0');
-        sample_take   <= '0';
-      else
-        sample_take <= '0';
-
-        if uart_tx_valid = '1' then
-          if uart_tx_ready = '1' then
-            uart_tx_valid <= '0';
-
-            case uart_state is
-              when ST_UART_SEND_N3 =>
-                uart_state <= ST_UART_SEND_N2;
-              when ST_UART_SEND_N2 =>
-                uart_state <= ST_UART_SEND_N1;
-              when ST_UART_SEND_N1 =>
-                uart_state <= ST_UART_SEND_N0;
-              when ST_UART_SEND_N0 =>
-                uart_state <= ST_UART_SEND_CR;
-              when ST_UART_SEND_CR =>
-                uart_state <= ST_UART_SEND_LF;
-              when ST_UART_SEND_LF =>
-                uart_state <= ST_UART_IDLE;
-              when others =>
-                uart_state <= ST_UART_IDLE;
-            end case;
-          end if;
-        else
-          case uart_state is
-            when ST_UART_IDLE =>
-              if sample_latched = '1' then
-                sample_staged <= sample_capture;
-                sample_take   <= '1';
-                uart_state    <= ST_UART_SEND_N3;
-              end if;
-
-            when ST_UART_SEND_N3 =>
-              uart_tx_data  <= to_hex_ascii(sample_staged(15 downto 12));
-              uart_tx_valid <= '1';
-
-            when ST_UART_SEND_N2 =>
-              uart_tx_data  <= to_hex_ascii(sample_staged(11 downto 8));
-              uart_tx_valid <= '1';
-
-            when ST_UART_SEND_N1 =>
-              uart_tx_data  <= to_hex_ascii(sample_staged(7 downto 4));
-              uart_tx_valid <= '1';
-
-            when ST_UART_SEND_N0 =>
-              uart_tx_data  <= to_hex_ascii(sample_staged(3 downto 0));
-              uart_tx_valid <= '1';
-
-            when ST_UART_SEND_CR =>
-              uart_tx_data  <= C_UART_CR;
-              uart_tx_valid <= '1';
-
-            when ST_UART_SEND_LF =>
-              uart_tx_data  <= C_UART_LF;
-              uart_tx_valid <= '1';
-          end case;
-        end if;
-      end if;
-    end if;
-  end process;
+  -- UART streamer for ADC samples
+  i_uart_streamer : entity work.uart_sample_streamer
+    generic map(
+      GC_DATA_WIDTH => C_ADC_DATA_WIDTH
+    )
+    port map(
+      clk           => sysclk_pd,
+      rst           => rst,
+      sample_data   => adc_sample_data,
+      sample_valid  => adc_sample_valid,
+      uart_tx_data  => uart_tx_data,
+      uart_tx_valid => uart_tx_valid,
+      uart_tx_ready => uart_tx_ready
+    );
 
 end architecture rtl;

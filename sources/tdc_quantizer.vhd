@@ -7,9 +7,6 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
--- Note: library work is implicit, no need to declare
-use work.clk_rst_pkg.all;
-
 entity tdc_quantizer is
   generic(
     GC_TDC_BITS     : positive := 8;    -- TDC resolution bits
@@ -17,7 +14,7 @@ entity tdc_quantizer is
   );
   port(
     clk       : in  std_logic;
-    reset     : in  T_RST_T;
+    reset     : in  std_logic;
     -- TDC input (from parasitic delay line)
     tdc_start : in  std_logic;          -- Start timing measurement
     tdc_stop  : in  std_logic;          -- Stop timing measurement
@@ -54,6 +51,12 @@ architecture rtl of tdc_quantizer is
   signal stop_edge    : std_logic;
   signal trigger_edge : std_logic;
 
+  -- Altera synthesis attributes for synchronizers
+  attribute ALTERA_ATTRIBUTE                 : string;
+  attribute ALTERA_ATTRIBUTE of start_sync   : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
+  attribute ALTERA_ATTRIBUTE of stop_sync    : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
+  attribute ALTERA_ATTRIBUTE of trigger_sync : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
+
   -- Helpers
   function any_high_above_tdc_bits(u : unsigned) return boolean is
     constant C_ZEROS : unsigned(u'high downto GC_TDC_BITS) := (others => '0');
@@ -66,19 +69,13 @@ architecture rtl of tdc_quantizer is
   end function;
 
 begin
-  -- Synchronizers
+  -- Synchronizers (no reset for best metastability protection)
   p_sync : process(clk)
   begin
     if rising_edge(clk) then
-      if reset = C_RST_ACTIVE then
-        start_sync   <= (others => '0');
-        stop_sync    <= (others => '0');
-        trigger_sync <= (others => '0');
-      else
-        start_sync   <= start_sync(1 downto 0) & tdc_start;
-        stop_sync    <= stop_sync(1 downto 0) & tdc_stop;
-        trigger_sync <= trigger_sync(1 downto 0) & trigger;
-      end if;
+      start_sync   <= start_sync(1 downto 0) & tdc_start;
+      stop_sync    <= stop_sync(1 downto 0) & tdc_stop;
+      trigger_sync <= trigger_sync(1 downto 0) & trigger;
     end if;
   end process;
 
@@ -90,7 +87,7 @@ begin
   p_tdc : process(clk)
   begin
     if rising_edge(clk) then
-      if reset = C_RST_ACTIVE then
+      if reset = '1' then
         tdc_state    <= ST_IDLE;
         counter      <= (others => '0');
         meas_reg     <= (others => '0');

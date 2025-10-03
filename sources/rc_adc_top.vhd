@@ -9,7 +9,7 @@ use ieee.numeric_std.all;
 
 library fpga_lib;
 -- Note: library work is implicit, no need to declare
-use work.clk_rst_pkg.all;
+use work.common_pkg.all;                -- For register map constants
 
 entity rc_adc_top is
   generic(
@@ -58,9 +58,11 @@ architecture rtl of rc_adc_top is
   signal lp_valid_out  : std_logic;
 
   -- Status monitoring
-  signal activity_counter : unsigned(15 downto 0)        := (others => '0');
-  signal valid_counter    : unsigned(7 downto 0)         := (others => '0');
-  signal status_reg       : std_logic_vector(7 downto 0) := (others => '0');
+  signal activity_counter : unsigned(15 downto 0) := (others => '0');
+  signal valid_counter    : unsigned(7 downto 0)  := (others => '0');
+
+  -- Status register is combinatorial to save flip-flops
+  signal status_reg : std_logic_vector(7 downto 0);
 
   -- Altera synthesis attributes for proper synchronizer recognition
   attribute ALTERA_ATTRIBUTE                   : string;
@@ -89,13 +91,19 @@ begin
   -- Path A: 1-bit DAC feedback implementation (single register)
   -- This is the ONLY register in the feedback loop
   -- Total loop: LVDS → combinational → DAC FF → output (1 cycle)
+  -- RC integrator topology (per davemuscle/sigma_delta_converters):
+  --   LVDS+ = Analog input (signal)
+  --   LVDS- = RC integrator (DAC feedback through R→C→GND)
+  --   When comparator='1' (input > integrator): DAC='1' (charge RC, raise LVDS-)
+  --   When comparator='0' (input < integrator): DAC='0' (discharge RC, lower LVDS-)
+  --   Negative feedback emerges from RC integration, NOT from inversion
   p_dac_feedback : process(clk)
   begin
     if rising_edge(clk) then
-      if reset = C_RST_ACTIVE then
+      if reset = '1' then
         dac_feedback <= '0';
       else
-        dac_feedback <= lvds_bit_stream; -- DIRECT connection (0 sequential delay)
+        dac_feedback <= lvds_bit_stream; -- DIRECT connection (no inversion needed)
       end if;
     end if;
   end process;
@@ -171,14 +179,14 @@ begin
 
         if mem_cs = '1' and mem_rd = '1' then
           case to_integer(unsigned(mem_addr(7 downto 0))) is
-            when 0 =>                   -- ADC Data Register (lower 16 bits)
-              mem_rdata(GC_DATA_WIDTH - 1 downto 0) <= lp_data_out;
-            when 1 =>                   -- Status Register
-              mem_rdata(7 downto 0) <= status_reg;
-            when 2 =>                   -- Valid Counter
-              mem_rdata(7 downto 0) <= std_logic_vector(valid_counter);
-            when 3 =>                   -- Activity Counter
-              mem_rdata(15 downto 0) <= std_logic_vector(activity_counter);
+            when C_ADC_REG_DATA =>      -- ADC Data Register
+              mem_rdata(lp_data_out'range) <= lp_data_out;
+            when C_ADC_REG_STATUS =>    -- Status Register
+              mem_rdata(status_reg'range) <= status_reg;
+            when C_ADC_REG_VALID =>     -- Valid Counter
+              mem_rdata(valid_counter'range) <= std_logic_vector(valid_counter);
+            when C_ADC_REG_ACTIVITY =>  -- Activity Counter
+              mem_rdata(activity_counter'range) <= std_logic_vector(activity_counter);
             when others =>
               mem_rdata <= (others => '0');
           end case;
@@ -188,14 +196,13 @@ begin
     end if;
   end process;
 
-  -- Status monitoring
+  -- Status monitoring - counters only
   p_status : process(clk)
   begin
     if rising_edge(clk) then
       if reset = '1' then
         activity_counter <= (others => '0');
         valid_counter    <= (others => '0');
-        status_reg       <= (others => '0');
       else
         -- Count activity
         activity_counter <= activity_counter + 1;
@@ -204,16 +211,16 @@ begin
         if lp_valid_out = '1' then
           valid_counter <= valid_counter + 1;
         end if;
-
-        -- Build status register
-        status_reg(0)          <= decimator_sync(1); -- Live comparator bit (synchronized)
-        status_reg(1)          <= cic_valid_out; -- CIC active
-        status_reg(2)          <= eq_valid_out; -- Equalizer active
-        status_reg(3)          <= lp_valid_out; -- Final output valid
-        status_reg(4)          <= activity_counter(15); -- Activity heartbeat
-        status_reg(7 downto 5) <= std_logic_vector(valid_counter(7 downto 5)); -- Output rate indicator
       end if;
     end if;
   end process;
+
+  -- Status register - combinatorial (saves 8 flip-flops)
+  status_reg(0)          <= decimator_sync(1); -- Live comparator bit (synchronized)
+  status_reg(1)          <= cic_valid_out; -- CIC active
+  status_reg(2)          <= eq_valid_out; -- Equalizer active
+  status_reg(3)          <= lp_valid_out; -- Final output valid
+  status_reg(4)          <= activity_counter(15); -- Activity heartbeat
+  status_reg(7 downto 5) <= std_logic_vector(valid_counter(7 downto 5)); -- Output rate indicator
 
 end architecture rtl;
