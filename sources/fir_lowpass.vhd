@@ -42,14 +42,18 @@ architecture rtl of fir_lowpass is
   -- Coefficient width (Q1.15 fixed-point format)
   constant C_COEF_WIDTH : positive := 16;
 
+  -- Accumulator needs headroom: (16+1)-bit sum × 16-bit coeff = 33 bits
+  -- Sum of 63 products needs log2(63) ≈ 6 more bits → 33+6 = 39 bits total
+  constant C_ACC_WIDTH : natural := GC_INPUT_WIDTH + C_COEF_WIDTH + 1 + 6;
+
   -- Delay line for 63 taps
   type   T_DELAY_ARRAY is array (0 to 62) of signed(GC_INPUT_WIDTH - 1 downto 0);
   signal delay_line    : T_DELAY_ARRAY := (others => (others => '0'));
 
   -- Coefficient ROM (Q1.15 format, only first half due to symmetry)
   -- Sum = 32768 for DC gain = 1.0
-  type     T_COEFF_ARRAY is array (0 to 31) of signed(C_COEF_WIDTH - 1 downto 0);
-  constant C_COEFFS      : T_COEFF_ARRAY := (
+  type T_COEFF_ARRAY is array (0 to 31) of signed(C_COEF_WIDTH - 1 downto 0);
+  constant C_COEFFS : T_COEFF_ARRAY := (
     0  => to_signed(1, 16),             -- h[0] = h[62]
     1  => to_signed(1, 16),             -- h[1] = h[61]
     2  => to_signed(-5, 16),            -- h[2] = h[60]
@@ -89,19 +93,24 @@ architecture rtl of fir_lowpass is
   signal preadd_reg     : T_PREADD_ARRAY := (others => (others => '0'));
   signal valid_stage1   : std_logic      := '0';
 
-  -- Pipeline stage 2: Multiplication
+  -- Pipeline stage 2: Multiplication (with DSP block inference)
   type   T_PROD_ARRAY is array (0 to 31) of signed(GC_INPUT_WIDTH + C_COEF_WIDTH downto 0);
   signal prod_reg     : T_PROD_ARRAY := (others => (others => '0'));
   signal valid_stage2 : std_logic    := '0';
 
-  -- Pipeline stage 3: Accumulation tree
-  -- Accumulator needs headroom: (16+1)-bit sum × 16-bit coeff = 33 bits
-  -- Sum of 63 products needs log2(63) ≈ 6 more bits → 33+6 = 39 bits total
-  constant C_ACC_WIDTH  : natural                          := GC_INPUT_WIDTH + C_COEF_WIDTH + 1 + 6;
-  signal   acc_reg      : signed(C_ACC_WIDTH - 1 downto 0) := (others => '0');
-  signal   valid_stage3 : std_logic                        := '0';
+  -- Pipeline stage 3: Partial accumulation (first two levels registered for timing)
+  type   T_ACC_LEVEL1   is array (0 to 15) of signed(C_ACC_WIDTH - 1 downto 0);
+  type   T_ACC_LEVEL2   is array (0 to 7) of signed(C_ACC_WIDTH - 1 downto 0);
+  signal acc_level1_reg : T_ACC_LEVEL1 := (others => (others => '0'));
+  signal acc_level2_reg : T_ACC_LEVEL2 := (others => (others => '0'));
+  signal valid_stage3a  : std_logic    := '0';
+  signal valid_stage3b  : std_logic    := '0';
 
-  -- Pipeline stage 4: Scaling + saturation
+  -- Pipeline stage 4: Final accumulation
+  signal acc_reg      : signed(C_ACC_WIDTH - 1 downto 0) := (others => '0');
+  signal valid_stage4 : std_logic                        := '0';
+
+  -- Pipeline stage 5: Scaling + saturation
   signal output_reg : signed(GC_OUTPUT_WIDTH - 1 downto 0) := (others => '0');
   signal valid_reg  : std_logic                            := '0';
 
@@ -162,43 +171,70 @@ begin
   end process;
 
   -- ========================================================================
-  -- Pipeline Stage 3: Balanced binary accumulation tree
+  -- Pipeline Stage 3a: First level of accumulation tree (registered for timing)
   -- ========================================================================
-  -- Uses a balanced tree structure to minimize critical path
-  -- Tree depth: log2(32) = 5 levels, much better than 31 sequential adds
+  -- Level 1: 32 products → 16 sums
+  p_stage3a_accumulate : process(clk)
+  begin
+    if rising_edge(clk) then
+      if reset = '1' then
+        acc_level1_reg <= (others => (others => '0'));
+        valid_stage3a  <= '0';
+      elsif valid_stage2 = '1' then
+        -- Level 1: 16 pairs (32→16)
+        for i in 0 to 15 loop
+          acc_level1_reg(i) <= resize(prod_reg(2 * i), C_ACC_WIDTH) + resize(prod_reg(2 * i + 1), C_ACC_WIDTH);
+        end loop;
+
+        valid_stage3a <= '1';
+      else
+        valid_stage3a <= '0';
+      end if;
+    end if;
+  end process;
+
   -- ========================================================================
-  p_stage3_accumulate : process(clk)
-    -- Level 1: 16 sums of 2 products
-    type     T_LEVEL1 is array (0 to 15) of signed(C_ACC_WIDTH - 1 downto 0);
-    variable v_level1 : T_LEVEL1;
-    -- Level 2: 8 sums
-    type     T_LEVEL2 is array (0 to 7) of signed(C_ACC_WIDTH - 1 downto 0);
-    variable v_level2 : T_LEVEL2;
-    -- Level 3: 4 sums
+  -- Pipeline Stage 3b: Second level of accumulation tree (registered)
+  -- ========================================================================
+  p_stage3b_accumulate : process(clk)
+  begin
+    if rising_edge(clk) then
+      if reset = '1' then
+        acc_level2_reg <= (others => (others => '0'));
+        valid_stage3b  <= '0';
+      elsif valid_stage3a = '1' then
+        -- Level 2: 8 pairs (16→8)
+        for i in 0 to 7 loop
+          acc_level2_reg(i) <= acc_level1_reg(2 * i) + acc_level1_reg(2 * i + 1);
+        end loop;
+
+        valid_stage3b <= '1';
+      else
+        valid_stage3b <= '0';
+      end if;
+    end if;
+  end process;
+
+  -- ========================================================================
+  -- Pipeline Stage 4: Final accumulation (remaining 3 levels)
+  -- ========================================================================
+  -- Level 3: 8 sums → 4 sums
+  -- Level 4: 4 sums → 2 sums
+  -- Level 5: 2 sums → 1 final sum
+  p_stage4_accumulate : process(clk)
     type     T_LEVEL3 is array (0 to 3) of signed(C_ACC_WIDTH - 1 downto 0);
     variable v_level3 : T_LEVEL3;
-    -- Level 4: 2 sums
     type     T_LEVEL4 is array (0 to 1) of signed(C_ACC_WIDTH - 1 downto 0);
     variable v_level4 : T_LEVEL4;
   begin
     if rising_edge(clk) then
       if reset = '1' then
         acc_reg      <= (others => '0');
-        valid_stage3 <= '0';
-      elsif valid_stage2 = '1' then
-        -- Level 1: 16 pairs (32→16)
-        for i in 0 to 15 loop
-          v_level1(i) := resize(prod_reg(2 * i), C_ACC_WIDTH) + resize(prod_reg(2 * i + 1), C_ACC_WIDTH);
-        end loop;
-
-        -- Level 2: 8 pairs (16→8)
-        for i in 0 to 7 loop
-          v_level2(i) := v_level1(2 * i) + v_level1(2 * i + 1);
-        end loop;
-
+        valid_stage4 <= '0';
+      elsif valid_stage3b = '1' then
         -- Level 3: 4 pairs (8→4)
         for i in 0 to 3 loop
-          v_level3(i) := v_level2(2 * i) + v_level2(2 * i + 1);
+          v_level3(i) := acc_level2_reg(2 * i) + acc_level2_reg(2 * i + 1);
         end loop;
 
         -- Level 4: 2 pairs (4→2)
@@ -208,18 +244,17 @@ begin
 
         -- Level 5: Final sum (2→1)
         acc_reg      <= v_level4(0) + v_level4(1);
-        valid_stage3 <= '1';
-
+        valid_stage4 <= '1';
       else
-        valid_stage3 <= '0';
+        valid_stage4 <= '0';
       end if;
     end if;
   end process;
 
   -- ========================================================================
-  -- Pipeline Stage 4: Q1.15 scaling and saturation
+  -- Pipeline Stage 5: Q1.15 scaling and saturation
   -- ========================================================================
-  p_stage4_scale : process(clk)
+  p_stage5_scale : process(clk)
     constant C_Q15_SHIFT   : natural                          := 15; -- Q1.15 format shift
     constant C_ROUND_CONST : signed(C_ACC_WIDTH - 1 downto 0) := to_signed(2 ** (C_Q15_SHIFT - 1), C_ACC_WIDTH); -- 0.5 LSB
     variable v_scaled      : signed(C_ACC_WIDTH - 1 downto 0);
@@ -228,7 +263,7 @@ begin
       if reset = '1' then
         output_reg <= (others => '0');
         valid_reg  <= '0';
-      elsif valid_stage3 = '1' then
+      elsif valid_stage4 = '1' then
         -- Scale down by 2^15 (Q1.15 format) with rounding
         v_scaled   := acc_reg + C_ROUND_CONST;
         output_reg <= saturate(shift_right(v_scaled, C_Q15_SHIFT), GC_OUTPUT_WIDTH);

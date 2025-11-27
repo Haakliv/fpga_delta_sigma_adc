@@ -8,8 +8,6 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 library fpga_lib;
--- Note: library work is implicit, no need to declare
-use work.common_pkg.all;                -- For register map constants
 
 entity rc_adc_top is
   generic(
@@ -41,6 +39,13 @@ end entity;
 
 architecture rtl of rc_adc_top is
 
+  -- Memory-mapped register addresses
+  constant C_ADC_REG_DATA     : integer := 0; -- ADC raw data output
+  constant C_ADC_REG_STATUS   : integer := 1; -- Status register
+  constant C_ADC_REG_VALID    : integer := 2; -- Valid counter
+  constant C_ADC_REG_ACTIVITY : integer := 3; -- Activity counter
+  constant C_ADC_REG_MV       : integer := 4; -- Millivolt conversion output
+
   -- Internal signals
   signal lvds_bit_stream : std_logic;   -- Direct output from LVDS comparator (pass-through)
 
@@ -61,12 +66,11 @@ architecture rtl of rc_adc_top is
   signal activity_counter : unsigned(15 downto 0) := (others => '0');
   signal valid_counter    : unsigned(7 downto 0)  := (others => '0');
 
+  -- Millivolt conversion for output (LP filter → mV)
+  signal mv_code : unsigned(15 downto 0) := (others => '0');
+
   -- Status register is combinatorial to save flip-flops
   signal status_reg : std_logic_vector(7 downto 0);
-
-  -- Altera synthesis attributes for proper synchronizer recognition
-  attribute ALTERA_ATTRIBUTE                   : string;
-  attribute ALTERA_ATTRIBUTE of decimator_sync : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
 
 begin
 
@@ -129,6 +133,7 @@ begin
       clk      => clk,
       reset    => reset,
       data_in  => decimator_sync(1),    -- 2-FF synchronized input
+      ce       => '1',                  -- Always enabled (every cycle)
       data_out => cic_data_out,
       valid    => cic_valid_out
     );
@@ -166,6 +171,46 @@ begin
   sample_data  <= lp_data_out;
   sample_valid <= lp_valid_out;
 
+  -- Convert ADC output to millivolts (0..1200 mV range)
+  -- With proper ΔΣ loop: duty cycle of feedback = Vin/VFS
+  -- CIC/EQ/LP measure this duty cycle (average) with filtering
+  -- Simple scaling: output_mV = (lp_data × scale_factor) + offset
+
+  p_mv_from_lp : process(clk)
+    variable v_lp_signed : signed(GC_DATA_WIDTH - 1 downto 0);
+    variable v_scaled_mv : signed(31 downto 0);
+  begin
+    if rising_edge(clk) then
+      if reset = '1' then
+        mv_code <= (others => '0');
+      elsif lp_valid_out = '1' then
+        -- Convert signed Q-format [-1, +1) to millivolts [0, 1200]
+        -- CIC already removes its DC gain (R³) internally via C_SCALE_SHIFT
+        -- LP output is Q-format: m = y / 2^(W-1)
+        -- Voltage mapping: V = 600*m + 600
+        -- Combined: V = (y*600)/2^(W-1) + 600
+        v_lp_signed := signed(lp_data_out);
+
+        -- Scale: shift by (GC_DATA_WIDTH - 1) to undo Q-format
+        -- Multiply creates 64-bit result, shift, then resize to 32-bit
+        v_scaled_mv := resize(shift_right(resize(v_lp_signed, 32) * to_signed(600, 32),
+                                          GC_DATA_WIDTH - 1), 32);
+
+        -- Add midscale offset
+        v_scaled_mv := v_scaled_mv + to_signed(600, 32);
+
+        -- Saturate to 0..1200 mV range
+        if v_scaled_mv < 0 then
+          mv_code <= (others => '0');
+        elsif v_scaled_mv > to_signed(1200, 32) then
+          mv_code <= to_unsigned(1200, 16);
+        else
+          mv_code <= unsigned(v_scaled_mv(15 downto 0));
+        end if;
+      end if;
+    end if;
+  end process;
+
   -- Memory-mapped register interface
   p_memory_interface : process(clk)
   begin
@@ -187,6 +232,8 @@ begin
               mem_rdata(valid_counter'range) <= std_logic_vector(valid_counter);
             when C_ADC_REG_ACTIVITY =>  -- Activity Counter
               mem_rdata(activity_counter'range) <= std_logic_vector(activity_counter);
+            when C_ADC_REG_MV =>        -- Millivolt Conversion Register
+              mem_rdata(mv_code'range) <= std_logic_vector(mv_code);
             when others =>
               mem_rdata <= (others => '0');
           end case;

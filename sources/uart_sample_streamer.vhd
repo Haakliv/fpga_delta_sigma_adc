@@ -1,7 +1,7 @@
 -- ************************************************************************
 -- UART Sample Streamer
 -- Captures ADC samples and streams them as hex values over UART
--- Format: 4 hex digits + CR + LF (e.g., "A5F3\r\n")
+-- Also emits a one-shot "HELLO\r\n" banner after reset for bring-up
 -- ************************************************************************
 
 library ieee;
@@ -28,11 +28,13 @@ end entity;
 
 architecture rtl of uart_sample_streamer is
 
+    -- ===== Sample latch =====
     signal sample_capture : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
     signal sample_staged  : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
     signal sample_latched : std_logic                                    := '0';
     signal sample_take    : std_logic                                    := '0';
 
+    -- ===== UART state machine =====
     type   T_UART_STATE is (
         ST_UART_IDLE,
         ST_UART_SEND_N3,
@@ -63,8 +65,7 @@ architecture rtl of uart_sample_streamer is
 
 begin
 
-    -- Sample capture process
-    -- Captures incoming samples and latches them until UART state machine is ready
+    -- Sample capture: latch latest sample; held until taken by UART SM
     p_sample_capture : process(clk)
     begin
         if rising_edge(clk) then
@@ -103,20 +104,13 @@ begin
                         uart_tx_valid <= '0';
 
                         case uart_state is
-                            when ST_UART_SEND_N3 =>
-                                uart_state <= ST_UART_SEND_N2;
-                            when ST_UART_SEND_N2 =>
-                                uart_state <= ST_UART_SEND_N1;
-                            when ST_UART_SEND_N1 =>
-                                uart_state <= ST_UART_SEND_N0;
-                            when ST_UART_SEND_N0 =>
-                                uart_state <= ST_UART_SEND_CR;
-                            when ST_UART_SEND_CR =>
-                                uart_state <= ST_UART_SEND_LF;
-                            when ST_UART_SEND_LF =>
-                                uart_state <= ST_UART_IDLE;
-                            when others =>
-                                uart_state <= ST_UART_IDLE;
+                            when ST_UART_SEND_N3 => uart_state <= ST_UART_SEND_N2;
+                            when ST_UART_SEND_N2 => uart_state <= ST_UART_SEND_N1;
+                            when ST_UART_SEND_N1 => uart_state <= ST_UART_SEND_N0;
+                            when ST_UART_SEND_N0 => uart_state <= ST_UART_SEND_CR;
+                            when ST_UART_SEND_CR => uart_state <= ST_UART_SEND_LF;
+                            when ST_UART_SEND_LF => uart_state <= ST_UART_IDLE;
+                            when others          => uart_state <= ST_UART_IDLE;
                         end case;
                     end if;
                 else

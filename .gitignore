@@ -287,3 +287,6 @@ Thumbs.db
 /adc_system/adc_system_bb.v
 /cov_html
 coverage_data.ucdb
+/.copilot-instructions.md
+adc.stp
+axe5000_top_synthesized_save_view.txt

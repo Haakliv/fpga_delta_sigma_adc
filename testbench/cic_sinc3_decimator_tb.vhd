@@ -36,6 +36,7 @@ begin
       clk      => clk,
       reset    => reset,
       data_in  => data_in,
+      ce       => '1',                  -- Always enabled in testbench (every cycle)
       data_out => data_out,
       valid    => valid
     );

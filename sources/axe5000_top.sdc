@@ -1,93 +1,102 @@
-# 
-# SPDX-FileCopyrightText: Copyright (C) 2025 Arrow Electronics, Inc. 
-# SPDX-License-Identifier: MIT-0 
-#
+# SPDX-FileCopyrightText: Copyright (C) 2025 Arrow
+# SPDX-License-Identifier: MIT-0
 
-#**************************************************************
-# Time Information
-#**************************************************************
-
+# ---------- Time format ----------
 set_time_format -unit ns -decimal_places 3
 
-#**************************************************************
-# Create Clock
-#**************************************************************
+# ---------- Base board clock ----------
+# 25 MHz input pin
+create_clock -name CLK_25M -period 40.000 [get_ports {CLK_25M_C}]
 
-# Base oscillator (25 MHz pin from board)
-create_clock -name {clk_25m} -period 40.000 [get_ports {CLK_25M_C}]
-
-# For Agilex 5, derive_pll_clocks is not supported - PLLs are handled automatically
-# derive_pll_clocks -create_base_clocks
-derive_clock_uncertainty
-
-# Virtual clocks for async outputs
-create_clock -name VCLK_UART        -period 100.000
-create_clock -name VCLK_DAC         -period 100.000
-create_clock -name VCLK_TEST_PIN    -period 100.000
-
-# JTAG TCK clock for debugging (typical JTAG frequency)
-create_clock -name {altera_reserved_tck} -period 100.000 -waveform { 0.000 50.000 } [get_ports {altera_reserved_tck}]
+# NOTE: The PLL output clocks already exist in TimeQuest with these names:
+#   i_niosv|iopll|iopll_outclk0  (100 MHz)
+#   i_niosv|iopll|iopll_outclk1  (400 MHz)
+#   i_niosv|iopll|iopll_outclk2  (2 MHz)
+# Use get_clocks on those names, do NOT recreate them. (Agilex 5 auto-creates.)
 
 
-# JTAG interface constraints
-set_input_delay -clock [get_clocks {altera_reserved_tck}] -max 20.0 [get_ports {altera_reserved_tdi}]
-set_input_delay -clock [get_clocks {altera_reserved_tck}] -min 10.0 [get_ports {altera_reserved_tdi}]
-set_input_delay -clock [get_clocks {altera_reserved_tck}] -max 20.0 [get_ports {altera_reserved_tms}]
-set_input_delay -clock [get_clocks {altera_reserved_tck}] -min 10.0 [get_ports {altera_reserved_tms}]
-set_output_delay -clock [get_clocks {altera_reserved_tck}] -max 20.0 [get_ports {altera_reserved_tdo}]
-set_output_delay -clock [get_clocks {altera_reserved_tck}] -min 10.0 [get_ports {altera_reserved_tdo}]
+# ---------- Virtual/output interface clocks ----------
+create_clock -name VCLK_UART     -period 100.000
+create_clock -name VCLK_TEST_PIN -period 100.000
 
-#**************************************************************
-# Set False Path
-#**************************************************************
+# ---------- JTAG TCK (so TimeQuest stops whining) ----------
+# JTAG clock is asynchronous to all design clocks - constrain as false path
+create_clock -name altera_reserved_tck -period 100.000 [get_ports {altera_reserved_tck}]
+#set_false_path -from [get_clocks altera_reserved_tck] -to [get_clocks *] Doesnt work quartus doesnt find it
+set_false_path -from [get_clocks *] -to [get_clocks altera_reserved_tck]
 
-# Input (button)
-set_false_path -from [get_ports USER_BTN]
+# JTAG data pins - set nominal delays and false paths (debug interface only)
+set_input_delay -clock [get_clocks altera_reserved_tck] -max 0.0 [get_ports {altera_reserved_tdi}]
+set_input_delay -clock [get_clocks altera_reserved_tck] -min 0.0 [get_ports {altera_reserved_tdi}]
+set_input_delay -clock [get_clocks altera_reserved_tck] -max 0.0 [get_ports {altera_reserved_tms}]
+set_input_delay -clock [get_clocks altera_reserved_tck] -min 0.0 [get_ports {altera_reserved_tms}]
+set_output_delay -clock [get_clocks altera_reserved_tck] -max 0.0 [get_ports {altera_reserved_tdo}]
+set_output_delay -clock [get_clocks altera_reserved_tck] -min 0.0 [get_ports {altera_reserved_tdo}]
+set_false_path -from [get_ports {altera_reserved_tdi}]
+set_false_path -from [get_ports {altera_reserved_tms}]
+set_false_path -to [get_ports {altera_reserved_tdo}]
 
-# Output (UART)
-set_output_delay -clock [get_clocks VCLK_UART] -max 0.0 -source_latency_included [get_ports {UART_TX}]
-set_output_delay -clock [get_clocks VCLK_UART] -min 0.0 -source_latency_included [get_ports {UART_TX}]
-set_false_path -to   [get_ports UART_TX]
+# ---------- Clock domain relationships ----------
+# NOTE: For Agilex 5, PLL clocks are auto-created by IP SDC files.
+# Clock domain crossing constraints moved to axe5000_top_late.sdc to ensure
+# they are processed AFTER the IP SDC creates the PLL output clocks.
 
-# Output (DAC)
-set_output_delay -clock [get_clocks VCLK_DAC]  -max 0.0 -source_latency_included [get_ports {DAC_OUT}]
-set_output_delay -clock [get_clocks VCLK_DAC]  -min 0.0 -source_latency_included [get_ports {DAC_OUT}]
-set_false_path -to   [get_ports DAC_OUT]
+# Optional aliases (handy in reports); comment out if you don't want extra names
+# create_generated_clock -name SYS_100M  -source [get_clocks {CLK_25M}] -divide_by 0.25 [get_clocks {i_niosv|iopll|iopll_outclk0}]
+# create_generated_clock -name TDC_400M  -source [get_clocks {CLK_25M}] -divide_by 0.0625 [get_clocks {i_niosv|iopll|iopll_outclk1}]
+# create_generated_clock -name REF_2M    -source [get_clocks {CLK_25M}] -multiply_by 0.08  [get_clocks {i_niosv|iopll|iopll_outclk2}]
 
-# DIP switches (asynchronous user inputs)
-#set_false_path -from [get_ports {DIP_SW[*]}]
+# ---------- Obvious false paths ----------
+# Async user input
+set_false_path -from [get_ports {USER_BTN}]
 
-# Delta-Sigma ADC analog input (asynchronous comparator output)
-set_false_path -from [get_ports {ANALOG_IN}]
+# JTAG is independent of all other clock domains
+#set_false_path -from [get_clocks *] -to [get_clocks {altera_reserved_tck}]
 
-# NIOS-V JTAG debugging paths for NIOS-V processor (more specific wildcards)
-set_false_path -from [get_registers "*jtag_master*"] -to [get_registers "*"]
-set_false_path -from [get_registers "*"] -to [get_registers "*jtag_master*"]
-#set_false_path -from [get_registers "*dbg_mod*"] -to [get_registers "*"]
-#set_false_path -from [get_registers "*"] -to [get_registers "*dbg_mod*"]
+# Self-test signal (ONLY SELF-TEST MODE)
+# The test_signal intentionally crosses async to TDL to simulate external analog
+#set_false_path -from [get_registers {*|test_signal}] -to [get_registers {*|i_tdc|tdl_bank_current*}]
 
-# JTAG false paths to all other clock domains
-#set_false_path -from [get_clocks {altera_reserved_tck}] -to [get_clocks *]
-set_false_path -from [get_clocks *] -to [get_clocks {altera_reserved_tck}]
+# NOTE: CDC false paths moved to axe5000_top_late.sdc (processed after IP SDC creates PLL clocks)
 
-# Test pin (debug/test output, no timing requirements) - specific constraint
+# ---------- Simple board-output constraints ----------
+# UART TX – treat as false path but add zero delays so tool knows it's "constrained"
+set_output_delay -clock [get_clocks VCLK_UART]     -max 0.0 -source_latency_included [get_ports {UART_TX}]
+set_output_delay -clock [get_clocks VCLK_UART]     -min 0.0 -source_latency_included [get_ports {UART_TX}]
+set_false_path -to [get_ports {UART_TX}]
+
+# Test pin (debug)
 set_output_delay -clock [get_clocks VCLK_TEST_PIN] -max 0.0 -source_latency_included [get_ports {TEST_PIN}]
 set_output_delay -clock [get_clocks VCLK_TEST_PIN] -min 0.0 -source_latency_included [get_ports {TEST_PIN}]
 set_false_path -to [get_ports {TEST_PIN}]
 
-#**************************************************************
-# Design Rule Waivers
-#**************************************************************
+# LED1 (debug - not timing-critical)
+set_output_delay -clock [get_clocks VCLK_TEST_PIN] -max 0.0 -source_latency_included [get_ports {LED1}]
+set_output_delay -clock [get_clocks VCLK_TEST_PIN] -min 0.0 -source_latency_included [get_ports {LED1}]
+set_false_path -to [get_ports {LED1}]
 
-# Waive multiple reset synchronizer warning for NIOS-V system
-# This is expected behavior for complex Intel IP with multiple subsystems
-# set_design_assistant_rule_status -rule RDC-50003 -status WAIVED
+# ---------- Analog Feedback Loop I/O (ANALOG_IN / FEEDBACK_OUT) ----------
+# These pins form a continuous-time analog feedback loop for the delta-sigma ADC.
+# The TDC samples the differential comparator output asynchronously relative to
+# the 400 MHz TDC clock. The DAC output (FEEDBACK_OUT) is registered at 400 MHz.
+#
+# Virtual clock approach: Create a 400 MHz virtual clock to represent the TDC clock
+# domain, then set relaxed input/output delays since this is an analog interface.
+create_clock -name VCLK_ANALOG_400M -period 2.500
 
-# Waive intra-clock false path synchronizer warning for NIOS-V JTAG debug infrastructure
-# These are intentional design patterns in Intel IP for JTAG debugging functionality
-# Timing is managed through handshaking protocols rather than strict timing constraints
-# set_design_assistant_rule_status -rule CDC-50101 -status WAIVED
+# ANALOG_IN: Analog input + differential comparator input (P-pin)
+# This is sampled by the TDC asynchronously - set as false path with nominal constraint
+set_input_delay -clock [get_clocks VCLK_ANALOG_400M] -max 0.0 -source_latency_included [get_ports {ANALOG_IN}]
+set_input_delay -clock [get_clocks VCLK_ANALOG_400M] -min 0.0 -source_latency_included [get_ports {ANALOG_IN}]
 
-# Suppress invalid JTAG Atlantic constraints warnings
-# These are auto-generated constraints from Intel IP that may not apply to this design
-# set_design_assistant_rule_status -rule TMC-20025 -status WAIVED
+# FEEDBACK_OUT: DAC output (feeds external RC filter back to ANALOG_IN comparator N-pin)
+# Output path: Registered at 400 MHz TDC clock
+# The RC-filtered signal returns to ANALOG_IN as the differential comparator N-pin
+# Set as false path with nominal constraint (timing determined by analog loop, not I/O)
+set_output_delay -clock [get_clocks VCLK_ANALOG_400M] -max 0.0 -source_latency_included [get_ports {FEEDBACK_OUT}]
+set_output_delay -clock [get_clocks VCLK_ANALOG_400M] -min 0.0 -source_latency_included [get_ports {FEEDBACK_OUT}]
+
+# The analog loop timing is determined by the TDC architecture, not I/O timing
+# Set these as false paths to avoid over-constraining the analog interface
+set_false_path -from [get_ports {ANALOG_IN}]
+set_false_path -to [get_ports {FEEDBACK_OUT}]

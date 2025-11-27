@@ -14,16 +14,16 @@ refer to the applicable agreement for further details, at
 https://fpgasoftware.intel.com/eula.-->
 <ipxact:component xmlns:altera="http://www.altera.com/XMLSchema/IPXact2014/extensions" xmlns:ipxact="http://www.accellera.org/XMLSchema/IPXACT/1685-2014">
   <ipxact:vendor>Intel Corporation</ipxact:vendor>
-  <ipxact:library>adc_system_reset_bridge_0</ipxact:library>
-  <ipxact:name>adc_system_reset_bridge_0</ipxact:name>
+  <ipxact:library>adc_system_reset_bridge_tap</ipxact:library>
+  <ipxact:name>adc_system_reset_bridge_tap</ipxact:name>
   <ipxact:version>19.2.0</ipxact:version>
   <ipxact:busInterfaces>
     <ipxact:busInterface>
       <ipxact:name>clk</ipxact:name>
-      <ipxact:busType vendor="intel" library="intel" name="clock" version="25.1"></ipxact:busType>
+      <ipxact:busType vendor="intel" library="intel" name="clock" version="25.3"></ipxact:busType>
       <ipxact:abstractionTypes>
         <ipxact:abstractionType>
-          <ipxact:abstractionRef vendor="intel" library="intel" name="clock" version="25.1"></ipxact:abstractionRef>
+          <ipxact:abstractionRef vendor="intel" library="intel" name="clock" version="25.3"></ipxact:abstractionRef>
           <ipxact:portMaps>
             <ipxact:portMap>
               <ipxact:logicalPort>
@@ -57,10 +57,10 @@ https://fpgasoftware.intel.com/eula.-->
     </ipxact:busInterface>
     <ipxact:busInterface>
       <ipxact:name>in_reset</ipxact:name>
-      <ipxact:busType vendor="intel" library="intel" name="reset" version="25.1"></ipxact:busType>
+      <ipxact:busType vendor="intel" library="intel" name="reset" version="25.3"></ipxact:busType>
       <ipxact:abstractionTypes>
         <ipxact:abstractionType>
-          <ipxact:abstractionRef vendor="intel" library="intel" name="reset" version="25.1"></ipxact:abstractionRef>
+          <ipxact:abstractionRef vendor="intel" library="intel" name="reset" version="25.3"></ipxact:abstractionRef>
           <ipxact:portMaps>
             <ipxact:portMap>
               <ipxact:logicalPort>
@@ -89,10 +89,10 @@ https://fpgasoftware.intel.com/eula.-->
     </ipxact:busInterface>
     <ipxact:busInterface>
       <ipxact:name>out_reset</ipxact:name>
-      <ipxact:busType vendor="intel" library="intel" name="reset" version="25.1"></ipxact:busType>
+      <ipxact:busType vendor="intel" library="intel" name="reset" version="25.3"></ipxact:busType>
       <ipxact:abstractionTypes>
         <ipxact:abstractionType>
-          <ipxact:abstractionRef vendor="intel" library="intel" name="reset" version="25.1"></ipxact:abstractionRef>
+          <ipxact:abstractionRef vendor="intel" library="intel" name="reset" version="25.3"></ipxact:abstractionRef>
           <ipxact:portMaps>
             <ipxact:portMap>
               <ipxact:logicalPort>
@@ -193,7 +193,7 @@ https://fpgasoftware.intel.com/eula.-->
   <ipxact:vendorExtensions>
     <altera:entity_info>
       <ipxact:vendor>Intel Corporation</ipxact:vendor>
-      <ipxact:library>adc_system_reset_bridge_0</ipxact:library>
+      <ipxact:library>adc_system_reset_bridge_tap</ipxact:library>
       <ipxact:name>altera_reset_bridge</ipxact:name>
       <ipxact:version>19.2.0</ipxact:version>
     </altera:entity_info>
@@ -227,7 +227,7 @@ https://fpgasoftware.intel.com/eula.-->
         <ipxact:parameter parameterId="AUTO_CLK_CLOCK_RATE" type="longint">
           <ipxact:name>AUTO_CLK_CLOCK_RATE</ipxact:name>
           <ipxact:displayName>Auto CLOCK_RATE</ipxact:displayName>
-          <ipxact:value>-1</ipxact:value>
+          <ipxact:value>100000000</ipxact:value>
         </ipxact:parameter>
       </ipxact:parameters>
     </altera:altera_module_parameters>
@@ -271,7 +271,7 @@ https://fpgasoftware.intel.com/eula.-->
          type = "String";
       }
    }
-   element reset_bridge
+   element adc_system_reset_bridge_tap
    {
    }
 }
@@ -406,6 +406,7 @@ https://fpgasoftware.intel.com/eula.-->
                 &lt;suppliedSystemInfos&gt;
                     &lt;entry&gt;
                         &lt;key&gt;CLOCK_RATE&lt;/key&gt;
+                        &lt;value&gt;100000000&lt;/value&gt;
                     &lt;/entry&gt;
                 &lt;/suppliedSystemInfos&gt;
                 &lt;consumedSystemInfos/&gt;
@@ -427,13 +428,13 @@ https://fpgasoftware.intel.com/eula.-->
       </ipxact:parameters>
     </altera:altera_system_parameters>
     <altera:altera_interface_boundary>
-      <altera:interface_mapping altera:name="clk" altera:internal="adc_system_reset_bridge_0.clk" altera:type="clock" altera:dir="end">
+      <altera:interface_mapping altera:name="clk" altera:internal="adc_system_reset_bridge_tap.clk" altera:type="clock" altera:dir="end">
         <altera:port_mapping altera:name="clk" altera:internal="clk"></altera:port_mapping>
       </altera:interface_mapping>
-      <altera:interface_mapping altera:name="in_reset" altera:internal="adc_system_reset_bridge_0.in_reset" altera:type="reset" altera:dir="end">
+      <altera:interface_mapping altera:name="in_reset" altera:internal="adc_system_reset_bridge_tap.in_reset" altera:type="reset" altera:dir="end">
         <altera:port_mapping altera:name="in_reset_n" altera:internal="in_reset_n"></altera:port_mapping>
       </altera:interface_mapping>
-      <altera:interface_mapping altera:name="out_reset" altera:internal="adc_system_reset_bridge_0.out_reset" altera:type="reset" altera:dir="start">
+      <altera:interface_mapping altera:name="out_reset" altera:internal="adc_system_reset_bridge_tap.out_reset" altera:type="reset" altera:dir="start">
         <altera:port_mapping altera:name="out_reset_n" altera:internal="out_reset_n"></altera:port_mapping>
       </altera:interface_mapping>
     </altera:altera_interface_boundary>

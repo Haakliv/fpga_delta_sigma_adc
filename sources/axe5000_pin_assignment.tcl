@@ -7,20 +7,31 @@
 # ========================================================================
 
 # Delta-Sigma ADC analog input (differential LVDS)
-set_location_assignment PIN_V6 -to ANALOG_IN       ; # CRUVI analog input
+set_location_assignment PIN_V3 -to ANALOG_IN       ; # P-pin (updated from AC7) - input only
 set_instance_assignment -name IO_STANDARD "1.3-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN
+set_instance_assignment -name INPUT_TERMINATION "DIFFERENTIAL" -to ANALOG_IN
 
-# DAC Feedback Output - HSO (HS Serial Out)
+set_location_assignment PIN_W3 -to FEEDBACK_N      ; # N-pin (complement of V3)
+
+# Virtual pin for gpio_dac P-pin output buffer (not physically connected)
+set_instance_assignment -name VIRTUAL_PIN ON -to DAC_P_DUMMY
+
+## DAC Feedback Output - Active assignment
 # Critical ΣΔ loop path: pack register into IO cell for 1-cycle latency
-set_location_assignment PIN_N6 -to DAC_OUT         ; # HSO (CRUVI pin 6)
+set_location_assignment PIN_U5 -to DAC_OUT         ;
 set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to DAC_OUT
 set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to DAC_OUT
-set_instance_assignment -name SLEW_RATE 0 -to DAC_OUT
+set_instance_assignment -name SLEW_RATE 3 -to DAC_OUT
 
 # Debug test pin
 set_location_assignment PIN_U4 -to TEST_PIN        ; # Test/debug output
 set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to TEST_PIN
 set_instance_assignment -name SLEW_RATE 0 -to TEST_PIN
+
+# Debug LED for TDC valid
+set_location_assignment PIN_AG21 -to LED1          ; # Board LED1 (debug_tdc_valid_sys)
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to LED1
+set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to LED1
 # ========================================================================
 # SYSTEM CLOCKS AND CONTROL
 # ========================================================================

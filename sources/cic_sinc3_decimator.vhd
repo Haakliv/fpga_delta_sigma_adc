@@ -2,7 +2,6 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
-use work.common_pkg.all;
 use work.dsp_utils_pkg.all;
 
 entity cic_sinc3_decimator is
@@ -14,6 +13,7 @@ entity cic_sinc3_decimator is
     clk      : in  std_logic;
     reset    : in  std_logic;           -- Use std_logic directly - no need for custom type
     data_in  : in  std_logic;           -- 1-bit delta-sigma stream
+    ce       : in  std_logic;           -- Clock enable - sample data_in when high
     data_out : out std_logic_vector(GC_OUTPUT_WIDTH - 1 downto 0);
     valid    : out std_logic            -- high one cycle per output
   );
@@ -28,12 +28,18 @@ architecture rtl of cic_sinc3_decimator is
 
   subtype T_ACC is signed(C_ACC_WIDTH - 1 downto 0);
 
-  -- Scaling: Remove CIC gain to fit output in GC_OUTPUT_WIDTH
-  -- For SINC3, gain G = R^3
-  -- For R=57344: log2(G) = 3*log2(57344) ≈ 47.4 bits
-  -- We have C_GROWTH_BITS = 48, plus 4 guard bits = 52 bits total
-  -- To get 16-bit output: shift down by (C_ACC_WIDTH - GC_OUTPUT_WIDTH)
-  constant C_SCALE_SHIFT : natural := C_ACC_WIDTH - GC_OUTPUT_WIDTH;
+  -- Scaling: Remove CIC gain to achieve unity DC gain
+  -- For sinc3 with M=1, DC gain G = R^3
+  -- Must shift by log2(G) = 3*log2(R) = C_GROWTH_BITS
+  -- Independent of accumulator width; C_EXTRA_GUARD is headroom only
+  -- Example: R=16 -> C_GROWTH_BITS=12, shift by 12 to divide by 4096
+  -- Example: R=64 -> C_GROWTH_BITS=18, shift by 18 to divide by 262144
+  constant C_SCALE_SHIFT : natural := C_GROWTH_BITS;
+
+  -- Q-format: Preserve fractional bits in output
+  -- Output is signed Q-format: [-1.0, 1.0) maps to [-2^(W-1), 2^(W-1)-1]
+  -- C_QBITS fractional bits ensure sub-unity means survive division by R^3
+  constant C_QBITS : natural := GC_OUTPUT_WIDTH - 1; -- fractional bits in output
 
   -- Integrators
   signal int1, int2, int3 : T_ACC := (others => '0');
@@ -49,6 +55,8 @@ architecture rtl of cic_sinc3_decimator is
   signal decimated : T_ACC := (others => '0');
 
   -- Pipeline stage for comb output (before scaling)
+  signal comb1_out   : T_ACC     := (others => '0'); -- Comb1 output register
+  signal comb2_out   : T_ACC     := (others => '0'); -- Comb2 output register
   signal comb3_out   : T_ACC     := (others => '0');
   signal comb3_valid : std_logic := '0';
 
@@ -62,10 +70,11 @@ begin
   valid    <= y_valid;
 
   -- Integrators @ input rate (proper cascaded accumulators)
-  -- Stage 1: int1 accumulates bipolar input (±1)
+  -- Stage 1: int1 accumulates bipolar input (+-1)
   -- Stage 2: int2 accumulates int1
   -- Stage 3: int3 accumulates int2
-  -- This creates the SINC³ transfer function H(z) = ((1-z^-R)/(1-z^-1))^3
+  -- This creates the sinc3 transfer function H(z) = ((1-z^-R)/(1-z^-1))^3
+  -- Clock enable gates integration to sample rate
   process(clk)
     variable v_x : T_ACC;
   begin
@@ -75,18 +84,20 @@ begin
         int2 <= (others => '0');
         int3 <= (others => '0');
       else
-        -- Map bitstream to bipolar: '1' → +1, '0' → -1
-        v_x := map_bipolar(data_in, C_ACC_WIDTH);
+        if ce = '1' then                -- Only integrate when new sample arrives
+          -- Map bitstream to bipolar: '1' -> +1, '0' -> -1
+          v_x := map_bipolar(data_in, C_ACC_WIDTH);
 
-        -- Cascade: each integrator accumulates the previous stage
-        int1 <= int1 + v_x;
-        int2 <= int2 + int1;
-        int3 <= int3 + int2;
+          -- Cascade: each integrator accumulates the previous stage
+          int1 <= int1 + v_x;
+          int2 <= int2 + int1;
+          int3 <= int3 + int2;
+        end if;
       end if;
     end if;
   end process;
 
-  -- Decimation counter
+  -- Decimation counter (only counts when ce='1')
   process(clk)
   begin
     if rising_edge(clk) then
@@ -95,73 +106,116 @@ begin
         dec_pulse <= '0';
         decimated <= (others => '0');
       else
-        if dec_cnt = to_unsigned(GC_DECIMATION - 1, dec_cnt'length) then
-          dec_cnt   <= (others => '0');
-          dec_pulse <= '1';
-          decimated <= int3;
-        else
-          dec_cnt   <= dec_cnt + 1;
-          dec_pulse <= '0';
+        dec_pulse <= '0';               -- Default
+        if ce = '1' then                -- Only count when new sample arrives
+          if dec_cnt = to_unsigned(GC_DECIMATION - 1, dec_cnt'length) then
+            dec_cnt   <= (others => '0');
+            dec_pulse <= '1';
+            decimated <= int3;
+          else
+            dec_cnt <= dec_cnt + 1;
+          end if;
         end if;
       end if;
     end if;
   end process;
 
   -- ========================================================================
-  -- Pipeline Stage 1: Comb filters @ decimated rate
+  -- Pipeline Stage 1: Comb filters @ decimated rate (3-CYCLE PIPELINE)
   -- ========================================================================
-  -- Performs the three differentiation stages
+  -- Performs the three differentiation stages across 3 clock cycles
   -- This happens only when dec_pulse = '1' (every GC_DECIMATION cycles)
+  -- Cycle 1: comb1 = decimated - comb1_d
+  -- Cycle 2: comb2 = comb1 - comb2_d
+  -- Cycle 3: comb3 = comb2 - comb3_d
+  -- Total latency: 3 cycles after dec_pulse (acceptable for decimated rate)
   -- ========================================================================
   p_comb_stage : process(clk)
     variable v_comb1, v_comb2, v_comb3 : T_ACC;
+    type     T_PIPE_STATE              is (ST_IDLE, ST_STAGE1, ST_STAGE2);
+    variable v_pipe_state              : T_PIPE_STATE := ST_IDLE;
   begin
     if rising_edge(clk) then
       if reset = '1' then
-        comb1_d     <= (others => '0');
-        comb2_d     <= (others => '0');
-        comb3_d     <= (others => '0');
-        comb3_out   <= (others => '0');
-        comb3_valid <= '0';
-      elsif dec_pulse = '1' then
-        -- Comb stages (differentiation)
-        v_comb1 := decimated - comb1_d;
-        comb1_d <= decimated;
-
-        v_comb2 := v_comb1 - comb2_d;
-        comb2_d <= v_comb1;
-
-        v_comb3 := v_comb2 - comb3_d;
-        comb3_d <= v_comb2;
-
-        -- Register output for next pipeline stage
-        comb3_out   <= v_comb3;
-        comb3_valid <= '1';
+        comb1_d      <= (others => '0');
+        comb2_d      <= (others => '0');
+        comb3_d      <= (others => '0');
+        comb1_out    <= (others => '0');
+        comb2_out    <= (others => '0');
+        comb3_out    <= (others => '0');
+        comb3_valid  <= '0';
+        v_pipe_state := ST_IDLE;
       else
-        comb3_valid <= '0';
+        case v_pipe_state is
+          when ST_IDLE =>
+            -- Idle: waiting for dec_pulse
+            comb3_valid <= '0';
+            if dec_pulse = '1' then
+              -- Cycle 1: First comb stage
+              v_comb1      := decimated - comb1_d;
+              comb1_d      <= decimated;
+              comb1_out    <= v_comb1;  -- Register for next cycle
+              v_pipe_state := ST_STAGE1;
+            end if;
+
+          when ST_STAGE1 =>
+            -- Cycle 2: Second comb stage
+            v_comb2      := comb1_out - comb2_d;
+            comb2_d      <= comb1_out;
+            comb2_out    <= v_comb2;    -- Register for next cycle
+            v_pipe_state := ST_STAGE2;
+
+          when ST_STAGE2 =>
+            -- Cycle 3: Third comb stage
+            v_comb3      := comb2_out - comb3_d;
+            comb3_d      <= comb2_out;
+            comb3_out    <= v_comb3;
+            comb3_valid  <= '1';        -- Output valid on cycle 3
+            v_pipe_state := ST_IDLE;    -- Return to idle
+        end case;
       end if;
     end if;
   end process;
 
   -- ========================================================================
-  -- Pipeline Stage 2: Scaling and saturation
+  -- Pipeline Stage 2: Q-Format Scaling and Saturation
   -- ========================================================================
-  -- Simple arithmetic shift to scale CIC output to GC_OUTPUT_WIDTH
-  -- Shift amount = C_ACC_WIDTH - GC_OUTPUT_WIDTH (removes growth + guard bits)
+  -- Scale CIC output by R^3 while preserving fractional bits (Q-format)
+  -- Steps:
+  --   1) Upscale by 2^Q to preserve fraction (Q-format with Q fractional bits)
+  --   2) Add 0.5 LSB for rounding *before* dividing by R^3
+  --   3) Divide by R^3 (right shift by C_SCALE_SHIFT)
+  --   4) Saturate to GC_OUTPUT_WIDTH
+  -- Result: Output is signed Q-format where full-scale ±1.0 → ±(2^(W-1)-1)
+  -- Example: R=64, duty=0.666 (800mV) -> mean=0.333 -> output=0.333*2^15=10923
   -- ========================================================================
   p_scale_stage : process(clk)
-    variable v_shifted : signed(GC_OUTPUT_WIDTH - 1 downto 0);
+    -- Widen to hold (comb3_out << C_QBITS) before shifting down by C_SCALE_SHIFT
+    variable v_wide    : signed(C_ACC_WIDTH + C_QBITS - 1 downto 0);
+    variable v_roundup : signed(C_ACC_WIDTH + C_QBITS - 1 downto 0);
+    variable v_scaled  : signed(C_ACC_WIDTH + C_QBITS - 1 downto 0);
   begin
     if rising_edge(clk) then
       if reset = '1' then
         y_out   <= (others => '0');
         y_valid <= '0';
       elsif comb3_valid = '1' then
-        -- Arithmetic right shift to remove CIC gain
-        -- Takes MSBs of comb output (with sign extension)
-        v_shifted := resize(shift_right(comb3_out, C_SCALE_SHIFT), GC_OUTPUT_WIDTH);
+        -- 1) Upscale by 2^Q to preserve fraction (Q-format)
+        v_wide := shift_left(resize(comb3_out, v_wide'length), C_QBITS);
 
-        y_out   <= v_shifted;
+        -- 2) Add 0.5 LSB for rounding *before* dividing by R^3
+        if C_SCALE_SHIFT > 0 then
+          v_roundup := shift_left(to_signed(1, v_wide'length), C_SCALE_SHIFT - 1);
+          v_scaled  := v_wide + v_roundup;
+        else
+          v_scaled := v_wide;
+        end if;
+
+        -- 3) Divide by R^3 (arithmetic right shift)
+        v_scaled := shift_right(v_scaled, C_SCALE_SHIFT);
+
+        -- 4) Saturate to GC_OUTPUT_WIDTH (signed Q-format: [-1, 1) -> [-2^(W-1), 2^(W-1)-1])
+        y_out   <= saturate(v_scaled, GC_OUTPUT_WIDTH);
         y_valid <= '1';
       else
         y_valid <= '0';

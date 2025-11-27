@@ -8,6 +8,10 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 package dsp_utils_pkg is
+    -- Ceiling log2 function
+    -- Returns the number of bits needed to represent values from 0 to x-1
+    -- Example: clog2(16) = 4, clog2(17) = 5
+    function clog2(x : positive) return natural;
 
     -- Saturating resize function
     -- Properly saturates signed values instead of wrapping
@@ -22,6 +26,17 @@ package dsp_utils_pkg is
 end package;
 
 package body dsp_utils_pkg is
+    -- Ceiling log2 function body
+    function clog2(x : positive) return natural is
+        variable v_temp : natural := x - 1;
+        variable v_n    : natural := 0;
+    begin
+        while v_temp > 0 loop
+            v_temp := v_temp / 2;
+            v_n    := v_n + 1;
+        end loop;
+        return v_n;
+    end function;
 
     function saturate(x : signed; result_width : positive) return signed is
         variable v_result     : signed(result_width - 1 downto 0);

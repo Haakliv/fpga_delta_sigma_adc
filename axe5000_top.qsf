@@ -1,5 +1,4 @@
-set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to DAC_OUT -entity axe5000_top
-set_instance_assignment -name SLEW_RATE 2 -to UART_TX -entity axe5000_top
+set_global_assignment -name TOP_LEVEL_ENTITY axe5000_top
 # --------------------------------------------------------------------------
 # AXE5000 / Agilex 5 — Clean QSF (ADC on B0, clock on A7, UART 3v3)
 # Device: A5EC008BM16AE6S
@@ -7,51 +6,12 @@ set_instance_assignment -name SLEW_RATE 2 -to UART_TX -entity axe5000_top
 # --------------------------------------------------------------------------
 
 # -------- Project / Device --------
-set_global_assignment -name FAMILY "Agilex 5"
-set_global_assignment -name DEVICE A5EC008BM16AE6S
-set_global_assignment -name TOP_LEVEL_ENTITY axe5000_top
-set_global_assignment -name LAST_QUARTUS_VERSION "25.1.1 Pro Edition"
 
 # -------- Build / Config --------
-set_global_assignment -name GENERATE_COMPRESSED_SOF ON
-set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1
-set_global_assignment -name BOARD default
-set_global_assignment -name PWRMGT_VOLTAGE_OUTPUT_FORMAT "LINEAR FORMAT"
-set_global_assignment -name PWRMGT_LINEAR_FORMAT_N "-12"
-set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
-set_global_assignment -name MAX_CORE_JUNCTION_TEMP 100
-set_global_assignment -name AUTO_RESTART_CONFIGURATION OFF
-set_global_assignment -name ON_CHIP_BITSTREAM_DECOMPRESSION OFF
-set_global_assignment -name USE_CONF_DONE SDM_IO16
-set_global_assignment -name USE_INIT_DONE SDM_IO0
-set_global_assignment -name ACTIVE_SERIAL_CLOCK AS_FREQ_25MHZ
-set_global_assignment -name DEVICE_INITIALIZATION_CLOCK OSC_CLK_1_25MHZ
-set_global_assignment -name POWER_APPLY_THERMAL_MARGIN ADDITIONAL
 
 # -------- Sources / IP --------
-set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
-set_global_assignment -name VHDL_FILE sources/common_pkg.vhd
-set_global_assignment -name VHDL_FILE sources/clk_rst_pkg.vhd
-set_global_assignment -name VHDL_FILE sources/dsp_utils_pkg.vhd
-set_global_assignment -name VHDL_FILE sources/tdc_quantizer.vhd
-set_global_assignment -name VHDL_FILE sources/rc_adc_top.vhd
-set_global_assignment -name VHDL_FILE sources/fir_lowpass.vhd
-set_global_assignment -name VHDL_FILE sources/fir_equalizer.vhd
-set_global_assignment -name VHDL_FILE sources/cic_sinc3_decimator.vhd
-set_global_assignment -name VHDL_FILE sources/uart_sample_streamer.vhd
-set_global_assignment -name VHDL_FILE sources/axe5000_top.vhd
 
-set_global_assignment -name SDC_FILE sources/axe5000_top.sdc
-
-set_global_assignment -name IP_FILE ip/adc_system/reset_release.ip
-set_global_assignment -name IP_FILE ip/adc_system/jtag_master.ip
-set_global_assignment -name IP_FILE ip/adc_system/dip_sw.ip
-set_global_assignment -name IP_FILE ip/adc_system/pb.ip
-set_global_assignment -name IP_FILE ip/adc_system/iopll.ip
-set_global_assignment -name IP_FILE ip/adc_system/sysclk_bridge.ip
-set_global_assignment -name IP_FILE ip/adc_system/reset_bridge.ip
-set_global_assignment -name IP_FILE ip/adc_system/adc_system_clock_in.ip
-set_global_assignment -name QSYS_FILE adc_system.qsys
+# Custom component-less comparator IO wrapper
 
 # If another script assigns pins, it may reintroduce conflicts — leave disabled.
 # set_global_assignment -name TCL_SCRIPT_FILE sources/axe5000_pin_assignment.tcl
@@ -59,32 +19,82 @@ set_global_assignment -name QSYS_FILE adc_system.qsys
 # -------- Pin / IO Standards --------
 
 # 25 MHz user clock (A7, 1.2-V bank)
-set_location_assignment PIN_A7 -to CLK_25M_C
-set_instance_assignment -name IO_STANDARD "1.2-V" -to CLK_25M_C -entity axe5000_top
 
 # DIP switches (1.2-V bank, with weak pull-ups)
 
 
 # UART (3.3-V bank). Match top-level names exactly.
 # If your board swaps these, flip the two set_location lines only.
-set_location_assignment PIN_AG24 -to UART_TX
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_TX -entity axe5000_top
 
 # DAC feedback output on HSIO single-ended (N6) — follow VADJ rail
-set_location_assignment PIN_N6 -to DAC_OUT
-set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to DAC_OUT -entity axe5000_top
 # If VADJ is 1.3 V in hardware, change to:
 # set_instance_assignment -name IO_STANDARD "1.3-V" -to DAC_OUT -entity axe5000_top
-set_instance_assignment -name SLEW_RATE 0 -to DAC_OUT -entity axe5000_top
-set_location_assignment PIN_U4 -to TEST_PIN
-set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to TEST_PIN -entity axe5000_top
-set_instance_assignment -name SLEW_RATE 0 -to TEST_PIN -entity axe5000_top
-set_location_assignment PIN_V6 -to ANALOG_IN
+
+# -------- Fitter Optimization Constraints --------
+# Source fitter optimizations for TDC encoder timing closure
+# ANALOG_IN is input-only (comparator output from GPIO IP)
+set_global_assignment -name SYNTH_MESSAGE_LEVEL HIGH
+set_instance_assignment -name PARTITION_COLOUR 4294921328 -to axe5000_top -entity axe5000_top
+set_global_assignment -name ENABLE_SIGNALTAP ON
+set_global_assignment -name USE_SIGNALTAP_FILE adc.stp
+set_instance_assignment -name IO_STANDARD "1.2-V" -to CLK_25M_C -entity axe5000_top
 set_instance_assignment -name IO_STANDARD "1.3-V TRUE DIFFERENTIAL SIGNALING" -to ANALOG_IN -entity axe5000_top
+set_global_assignment -name LAST_QUARTUS_VERSION "25.3.0 Pro Edition"
+set_global_assignment -name DEVICE A5EC008BM16AE6S
+set_global_assignment -name FAMILY "Agilex 5"
+set_global_assignment -name PWRMGT_VOLTAGE_OUTPUT_FORMAT "LINEAR FORMAT"
+set_global_assignment -name PWRMGT_LINEAR_FORMAT_N "-12"
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 100
+set_global_assignment -name SDC_FILE sources/axe5000_top.sdc
+set_global_assignment -name VHDL_FILE sources/tdc_quantizer.vhd
+set_global_assignment -name VHDL_FILE sources/tdc_adc_top.vhd
+set_global_assignment -name VHDL_FILE sources/passiveless_adc_top.vhd
+set_global_assignment -name IP_FILE ip/adc_system/iopll.ip
+set_global_assignment -name QSYS_FILE adc_system.qsys
+set_global_assignment -name SDC_FILE sources/axe5000_top_late.sdc
+set_global_assignment -name VHDL_FILE sources/clk_rst_pkg.vhd
+set_global_assignment -name VHDL_FILE sources/dsp_utils_pkg.vhd
+set_global_assignment -name VHDL_FILE sources/fir_lowpass.vhd
+set_global_assignment -name VHDL_FILE sources/fir_equalizer.vhd
+set_global_assignment -name VHDL_FILE sources/cic_sinc3_decimator.vhd
+set_global_assignment -name VHDL_FILE sources/uart_sample_streamer.vhd
+set_global_assignment -name VHDL_FILE sources/axe5000_top.vhd
+set_global_assignment -name IP_FILE ip/adc_system/sysclk_bridge.ip
+set_global_assignment -name IP_FILE ip/adc_system/adc_system_clock_in.ip
 set_global_assignment -name IP_FILE ip/adc_system/adc_system_rs232_0.ip
-set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to UART_TX -entity axe5000_top
-set_location_assignment PIN_A12 -to USER_BTN
+set_global_assignment -name IP_FILE ip/adc_system/adc_system_reset_bridge_tap.ip
+set_global_assignment -name IP_FILE ip/adc_system/reset_bridge.ip
+set_global_assignment -name SIGNALTAP_FILE adc.stp
+set_global_assignment -name IP_FILE ip/adc_system/gpio_comp.ip
+set_location_assignment PIN_V6 -to ANALOG_IN -comment IOBANK_2A_T
+set_location_assignment PIN_U4 -to TEST_PIN -comment IOBANK_2A_T
+set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to TEST_PIN -entity axe5000_top
+set_location_assignment PIN_AG21 -to LED1 -comment IOBANK_5A
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to LED1 -entity axe5000_top
+set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to LED1 -entity axe5000_top
+set_location_assignment PIN_A7 -to CLK_25M_C -comment IOBANK_3A_B
+set_location_assignment PIN_A12 -to USER_BTN -comment IOBANK_3A_B
 set_instance_assignment -name IO_STANDARD "1.2-V" -to USER_BTN -entity axe5000_top
 set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to USER_BTN -entity axe5000_top
-set_instance_assignment -name PARTITION_COLOUR 4285875199 -to axe5000_top -entity axe5000_top
-set_instance_assignment -name PARTITION_COLOUR 4286691071 -to auto_fab_0 -entity axe5000_top
+set_global_assignment -name BOARD default
+set_global_assignment -name IP_FILE ip/adc_system/reset_release.ip
+set_location_assignment PIN_AG24 -to UART_TX -comment IOBANK_5A
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_TX -entity axe5000_top
+set_instance_assignment -name SLEW_RATE 2 -to UART_TX
+set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to UART_TX
+set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
+set_global_assignment -name POWER_APPLY_THERMAL_MARGIN ADDITIONAL
+set_instance_assignment -name IO_STANDARD "1.3-V TRUE DIFFERENTIAL SIGNALING" -to "ANALOG_IN(n)" -entity axe5000_top
+set_location_assignment PIN_W5 -to "ANALOG_IN(n)" -comment IOBANK_2A_T
+set_location_assignment PIN_N6 -to FEEDBACK_OUT -comment IOBANK_2A_T
+set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to FEEDBACK_OUT -entity axe5000_top
+set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to FEEDBACK_OUT -entity axe5000_top
+set_instance_assignment -name ENABLE_BUS_HOLD_CIRCUITRY OFF -to FEEDBACK_OUT -entity axe5000_top
+set_location_assignment PIN_AC7 -to TRIGGER_IN -comment IOBANK_2A_T
+set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to TRIGGER_IN -entity axe5000_top
+set_global_assignment -name FLOW_ENABLE_INTERACTIVE_TIMING_ANALYZER OFF
+set_global_assignment -name IP_FILE ip/adc_system/iopll_tdc.ip
+set_global_assignment -name EDA_BOARD_DESIGN_SIGNAL_INTEGRITY_TOOL "HSPICE (Signal Integrity)"
+set_global_assignment -name EDA_OUTPUT_DATA_FORMAT HSPICE -section_id eda_board_design_signal_integrity
+set_global_assignment -name EDA_NETLIST_WRITER_OUTPUT_DIR "<output_directory>" -section_id eda_board_design_signal_integrity
