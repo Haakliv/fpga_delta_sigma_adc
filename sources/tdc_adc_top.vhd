@@ -1231,10 +1231,9 @@ begin
           -- COMBINED MODE: After LP filter is primed, use CIC/EQ/LP + TDC
           if lp_valid_out = '1' then
             -- LP output is the CIC/EQ/LP processed 1-bit DAC stream
-            -- NOTE: CIC bipolar input (±1) gives output range ±32768
-            -- TDC decimator uses DAC contribution ±16384 (half scale)
-            -- To match scales, divide LP output by 2
-            v_lp_signed := shift_right(signed(lp_data_out), 1);
+            -- CIC with bipolar input (±1) and unity gain gives output in Q15 format
+            -- Range: [-32768, +32767] maps to [-1.0, +1.0)
+            v_lp_signed := signed(lp_data_out);
 
             -- Add held TDC contribution for fine resolution
             -- The tdc_contrib_held was captured when tdc_contrib_valid fired

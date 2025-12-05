@@ -74,13 +74,20 @@ architecture rtl of cic_sinc3_decimator is
   signal comb3_out   : T_ACC     := (others => '0');
   signal comb3_valid : std_logic := '0';
 
-  -- Pipeline registers for scaling stage (break long combinational path)
+  -- Pipeline registers for scaling stage (4-stage pipeline to meet timing)
+  -- Timing path is broken into: upscale -> round_add -> divide -> saturate
   constant C_WIDE_WIDTH : natural := C_ACC_WIDTH + C_QBITS;
-  signal scale_pipe1       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0'); -- After shift/resize
+  
+  -- Stage 1: Upscale (shift left by C_QBITS)
+  signal scale_pipe1       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0');
   signal scale_pipe1_valid : std_logic := '0';
-  signal scale_pipe2       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0'); -- After rounding add
+  
+  -- Stage 2: Add rounding offset
+  signal scale_pipe2       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0');
   signal scale_pipe2_valid : std_logic := '0';
-  signal scale_pipe3       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0'); -- After divide/shift
+  
+  -- Stage 3: Division by R^3
+  signal scale_pipe3       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0');
   signal scale_pipe3_valid : std_logic := '0';
 
   -- Output register
@@ -201,23 +208,26 @@ begin
   end process;
 
   -- ========================================================================
-  -- Pipeline Stage 2: Q-Format Scaling and Saturation (3-STAGE PIPELINE)
+  -- Pipeline Stage 2: Q-Format Scaling and Saturation (4-STAGE PIPELINE)
   -- ========================================================================
   -- Scale CIC output by R^3 while preserving fractional bits (Q-format)
   -- 
-  -- TIMING FIX v4: Simplified pipeline without slow rounding addition
-  --   Stage 1: Upscale (shift left) and resize  
-  --   Stage 2: Divide/shift (uses truncation, <0.5 LSB error)
-  --   Stage 3: Saturate to output width
+  -- TIMING FIX: Split into 4 pipeline stages to break critical path:
+  --   Stage 1: Upscale by 2^Q (bit shift - fast)
+  --   Stage 2: Add rounding offset (wide addition - was timing critical)
+  --   Stage 3: Divide by R^3 (division/shift)
+  --   Stage 4: Saturate to output width
   --
-  -- For power-of-2 R: Use fast bit shift
-  -- For non-power-of-2 R: Exact division (synthesis infers DSP blocks)
+  -- With R=64, we have 64 clock cycles between samples, so 4 cycles latency
+  -- is negligible. This breaks the path: upscale+round+divide+saturate into
+  -- separate registered stages.
   --
-  -- Note: The CIC outputs at DECIMATED rate (every R cycles), so these
-  -- pipeline stages have R clock cycles to complete. The timing analyzer
-  -- doesn't know this, so we rely on the multi-cycle nature inherently.
+  -- Result: Output is signed Q-format where full-scale ±1.0 → ±(2^(W-1)-1)
   -- ========================================================================
   p_scale_stage : process(clk)
+    -- Pre-compute rounding offset as constant (synthesis evaluates at compile time)
+    constant C_ROUND_OFFSET : signed(C_WIDE_WIDTH - 1 downto 0) := 
+      to_signed(C_R_CUBED / 2, C_WIDE_WIDTH);
   begin
     if rising_edge(clk) then
       if reset = '1' then
@@ -231,6 +241,7 @@ begin
         y_valid           <= '0';
       else
         -- ====== Pipeline Stage 1: Upscale by 2^Q ======
+        -- Shift left to preserve fractional bits in Q-format
         if comb3_valid = '1' then
           scale_pipe1       <= shift_left(resize(comb3_out, C_WIDE_WIDTH), C_QBITS);
           scale_pipe1_valid <= '1';
@@ -238,24 +249,37 @@ begin
           scale_pipe1_valid <= '0';
         end if;
 
-        -- ====== Pipeline Stage 2: Divide/shift (truncation, no rounding) ======
-        -- Skip rounding to avoid slow wide addition. Truncation error <0.5 LSB.
+        -- ====== Pipeline Stage 2: Add rounding offset ======
+        -- This was the timing-critical path: wide addition on ~37-bit signal
+        -- Now it's in its own registered stage
         if scale_pipe1_valid = '1' then
-          if C_IS_POW2 then
-            -- Power-of-2: Fast bit shift (e.g., R=64 -> shift right by 18)
-            scale_pipe2 <= shift_right(scale_pipe1, C_SHIFT_BITS);
+          if scale_pipe1 >= 0 then
+            scale_pipe2 <= scale_pipe1 + C_ROUND_OFFSET;
           else
-            -- Non-power-of-2: Exact division (synthesis will infer DSP)
-            scale_pipe2 <= scale_pipe1 / to_signed(C_R_CUBED, scale_pipe1'length);
+            scale_pipe2 <= scale_pipe1 - C_ROUND_OFFSET;
           end if;
           scale_pipe2_valid <= '1';
         else
           scale_pipe2_valid <= '0';
         end if;
 
-        -- ====== Pipeline Stage 3: Saturate to output width ======
+        -- ====== Pipeline Stage 3: Divide by R^3 ======
+        -- For power-of-2: bit shift (fast)
+        -- For non-power-of-2: exact division (synthesis uses DSP)
         if scale_pipe2_valid = '1' then
-          y_out   <= saturate(scale_pipe2, GC_OUTPUT_WIDTH);
+          if C_IS_POW2 then
+            scale_pipe3 <= shift_right(scale_pipe2, C_SHIFT_BITS);
+          else
+            scale_pipe3 <= scale_pipe2 / to_signed(C_R_CUBED, scale_pipe2'length);
+          end if;
+          scale_pipe3_valid <= '1';
+        else
+          scale_pipe3_valid <= '0';
+        end if;
+
+        -- ====== Pipeline Stage 4: Saturate to output width ======
+        if scale_pipe3_valid = '1' then
+          y_out   <= saturate(scale_pipe3, GC_OUTPUT_WIDTH);
           y_valid <= '1';
         else
           y_valid <= '0';
