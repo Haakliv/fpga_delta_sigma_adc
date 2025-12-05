@@ -10,57 +10,43 @@ entity tdc_quantizer is
     GC_TDL_LENGTH   : positive               := 128; -- Taps per TDL lane
     GC_COARSE_BITS  : positive               := 8; -- Coarse counter width
     GC_OUTPUT_WIDTH : positive               := 16; -- Total TDC output width
-    GC_TIME_DAC_DEN : positive               := 256; -- Digital Time-DAC step denominator (step = 1/GC_TIME_DAC_DEN)
     GC_SIM          : boolean                := false -- Simulation mode: true = explicit delays, false = synthesis
   );
   port(
     -- Clocks
-    clk_sys         : in  std_logic;    -- System clock (e.g., 100 MHz)
-    clk_tdc         : in  std_logic;    -- TDC fast clock (e.g., 400-600 MHz)
-    reset           : in  std_logic;
-    analog_in       : in  std_logic;    -- LVDS comparator output (true differential) or digital test signal
+    clk_sys          : in  std_logic;   -- System clock (e.g., 100 MHz)
+    clk_tdc          : in  std_logic;   -- TDC fast clock (e.g., 400-600 MHz)
+    reset            : in  std_logic;
+    analog_in        : in  std_logic;   -- LVDS comparator output (true differential) or digital test signal
 
     -- Reference timing (Start edge source - should be clk_tdc or synchronous)
-    ref_phases      : in  std_logic_vector(0 downto 0); -- Single phase (ref_phases(0) = Start source)
-
-    -- 1-bit Time DAC control (feedback from loop filter)
-    time_dac_ctrl   : in  std_logic;    -- 1 = advance, 0 = retard reference
+    ref_phases       : in  std_logic_vector(0 downto 0); -- Single phase (ref_phases(0) = Start source)
 
     -- Polarity control (allows P/N swap correction without rebuild)
-    invert_polarity : in  std_logic;    -- 1 = invert sign, 0 = normal
+    invert_polarity  : in  std_logic;   -- 1 = invert sign, 0 = normal
 
     -- Coarse bias for window check adjustment
     -- Allows compensation for systematic timing offsets (e.g., digital self-test mode, routing delays)
     -- Applied as: dcoarse_adjusted = dcoarse - coarse_bias before window check
-    coarse_bias     : in  unsigned(7 downto 0); -- Subtract from dcoarse before window check (full 8-bit range)
-
-    -- Fine phase adjustment for TDL centering calibration
-    -- Adjusts start_coarse capture timing to center fine_at_comp in TDL range
-    -- Range: 0-255 sub-coarse steps (wraps within one coarse cycle)
-    fine_phase_adj  : in  unsigned(7 downto 0) := (others => '0'); -- Fine phase offset for TDL centering
+    coarse_bias      : in  unsigned(7 downto 0); -- Subtract from dcoarse before window check (full 8-bit range)
 
     -- TDC output
-    tdc_out         : out signed(GC_OUTPUT_WIDTH - 1 downto 0);
-    tdc_valid       : out std_logic;
-    overflow        : out std_logic;
-    lost_sample     : out std_logic;    -- Sticky flag: overflow occurred since reset
+    tdc_out          : out signed(GC_OUTPUT_WIDTH - 1 downto 0);
+    tdc_valid        : out std_logic;
+    overflow         : out std_logic;
+    lost_sample      : out std_logic;   -- Sticky flag: overflow occurred since reset
 
     -- TDL centering calibration output
     fine_at_comp_out : out unsigned(15 downto 0); -- fine_avg_fp captured at comp edge (for TDL centering calibration)
-    fine_valid_out   : out std_logic              -- Pulses when fine_at_comp_out is updated
+    fine_valid_out   : out std_logic    -- Pulses when fine_at_comp_out is updated
   );
 end entity;
 
 architecture rtl of tdc_quantizer is
 
-  -- ========================================================================
-  -- Attributes
-  -- ========================================================================
   attribute KEEP : boolean;
 
-  -- ========================================================================
   -- Helper Functions
-  -- ========================================================================
   function clog2(x : positive) return natural is
     variable v_bit_count : unsigned(4 downto 0)  := (others => '0');
     variable v_remainder : unsigned(29 downto 0) := to_unsigned(x - 1, 30);
@@ -72,22 +58,12 @@ architecture rtl of tdc_quantizer is
     return to_integer(v_bit_count);
   end function;
 
-  -- ========================================================================
   -- Constants
-  -- ========================================================================
-  constant C_TDL_BITS : natural := clog2(GC_TDL_LENGTH + 1);
-
-  -- Fixed-point for fine time: Q0.F format (fraction of Tclk_tdc)
+  constant C_TDL_BITS       : natural                             := clog2(GC_TDL_LENGTH + 1);
   constant C_FINE_FRAC_BITS : natural                             := 16;
   constant C_TIME_FP_BITS   : natural                             := GC_COARSE_BITS + C_FINE_FRAC_BITS;
-  -- 0.5 coarse periods in Q(COARSE.FINE) format = 0.5 × 2^FINE = 2^(FINE-1)
   constant C_HALF_COARSE_FP : signed(C_TIME_FP_BITS - 1 downto 0) := to_signed(2 ** (C_FINE_FRAC_BITS - 1), C_TIME_FP_BITS);
 
-  -- Time-DAC: Step size in Q0.F format (fraction of Tclk_tdc per step)
-  -- Step = 1/GC_TIME_DAC_DEN (e.g., 1/256 for fine granularity)
-  constant C_TIME_DAC_STEP_FP : unsigned(C_FINE_FRAC_BITS - 1 downto 0) := to_unsigned((2 ** C_FINE_FRAC_BITS) / GC_TIME_DAC_DEN, C_FINE_FRAC_BITS);
-
-  -- Used in dual-lobe bias selection to find min(|adj0|, |adjm|, |adjp|)
   function abs_s9(x : signed(GC_COARSE_BITS downto 0)) return unsigned is
     variable v_ux : unsigned(GC_COARSE_BITS downto 0);
   begin
@@ -99,46 +75,38 @@ architecture rtl of tdc_quantizer is
     return v_ux;
   end function;
 
-  -- ========================================================================
   -- Types
-  -- ========================================================================
   type T_TDL_THERM        is array (0 to GC_TDL_LENGTH - 1) of std_logic;
   type T_TDL_THERM_ARRAY  is array (0 to GC_TDL_LANES - 1) of T_TDL_THERM;
   type T_FINE_CODE_ARRAY  is array (0 to GC_TDL_LANES - 1) of unsigned(C_TDL_BITS - 1 downto 0);
   type T_FINE_FP_ARRAY    is array (0 to GC_TDL_LANES - 1) of unsigned(C_FINE_FRAC_BITS - 1 downto 0);
   type T_CAL_LUT          is array (0 to GC_TDL_LENGTH) of unsigned(C_FINE_FRAC_BITS - 1 downto 0);
-  type T_LANE_SCALE_ARRAY is array (0 to GC_TDL_LANES - 1) of unsigned(15 downto 0); -- Q1.15 format
+  type T_LANE_SCALE_ARRAY is array (0 to GC_TDL_LANES - 1) of unsigned(15 downto 0);
 
-  -- Pipelined encoder types (16 groups of 8 bits each for 128-bit TDL)
-  constant C_POPCOUNT_GROUPS   : positive := 16;
-  constant C_GROUP_SIZE        : positive := GC_TDL_LENGTH / C_POPCOUNT_GROUPS; -- 8 bits per group
-  type     T_GROUP_COUNT_ARRAY is array (0 to C_POPCOUNT_GROUPS - 1) of unsigned(3 downto 0); -- 0-8 count
-  type     T_LANE_GROUP_COUNTS is array (0 to GC_TDL_LANES - 1) of T_GROUP_COUNT_ARRAY;
-
-  -- Partial sums for 3-stage adder tree (timing closure at 400MHz)
-  constant C_PARTIAL_GROUPS     : positive := 4; -- Split 16 groups into 4 partials
-  constant C_GROUPS_PER_PARTIAL : positive := C_POPCOUNT_GROUPS / C_PARTIAL_GROUPS; -- 4 groups each
+  -- Pipelined encoder types
+  constant C_POPCOUNT_GROUPS    : positive := 16;
+  constant C_GROUP_SIZE         : positive := GC_TDL_LENGTH / C_POPCOUNT_GROUPS;
+  type     T_GROUP_COUNT_ARRAY  is array (0 to C_POPCOUNT_GROUPS - 1) of unsigned(3 downto 0);
+  type     T_LANE_GROUP_COUNTS  is array (0 to GC_TDL_LANES - 1) of T_GROUP_COUNT_ARRAY;
+  constant C_PARTIAL_GROUPS     : positive := 4;
+  constant C_GROUPS_PER_PARTIAL : positive := C_POPCOUNT_GROUPS / C_PARTIAL_GROUPS;
   type     T_PARTIAL_SUM_ARRAY  is array (0 to C_PARTIAL_GROUPS - 1) of unsigned(C_TDL_BITS - 1 downto 0);
   type     T_LANE_PARTIAL_SUMS  is array (0 to GC_TDL_LANES - 1) of T_PARTIAL_SUM_ARRAY;
 
-  -- ========================================================================
   -- Signals
-  -- ========================================================================
-  -- Reset synchronization: reset comes from clk_sys but used in clk_tdc domain
-  signal reset_tdc : std_logic;
-
+  signal reset_tdc       : std_logic;
   signal analog_crossing : std_logic;
 
-  -- Start/Stop arming (one stop per reference period)
-  signal start_pulse     : std_logic := '0'; -- Single-cycle pulse on ref_phases(0) rising edge
-  signal ref_phase0_prev : std_logic := '0'; -- For edge detection on ref_phases(0)
-  signal armed           : std_logic := '0'; -- Arms stop capture after Start, clears after first Stop
+  -- Start/Stop arming
+  signal start_pulse     : std_logic := '0';
+  signal ref_phase0_prev : std_logic := '0';
+  signal armed           : std_logic := '0';
 
-  -- Stop synchronization (3-FF to match ref path depth)
+  -- Stop synchronization
   signal analog_sync         : std_logic_vector(2 downto 0) := (others => '0');
   signal analog_stop_mark    : std_logic                    := '0';
-  signal stop_level_at_start : std_logic                    := '0'; -- LVDS level at Start, for first-transition detection
-  signal edge_inhibit        : unsigned(1 downto 0)         := (others => '0'); -- 2-cycle inhibit counter for robustness
+  signal stop_level_at_start : std_logic                    := '0';
+  signal edge_inhibit        : unsigned(1 downto 0)         := (others => '0');
 
   -- ========================================================================
   -- CDC Attributes for Synchronizers
@@ -149,75 +117,32 @@ architecture rtl of tdc_quantizer is
   -- analog_sync chain: analog_in → clk_tdc domain (3-FF synchronizer for Stop)
   attribute altera_attribute of analog_sync : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
 
-  -- TDL
+  -- TDL signals
   signal tdl_chains       : T_TDL_THERM_ARRAY;
   signal tdl_bank_current : T_TDL_THERM_ARRAY;
   signal tdl_bank_prev    : T_TDL_THERM_ARRAY;
-  signal tdl_bank_prev_q  : T_TDL_THERM_ARRAY; -- Registered prev to break same-edge capture ambiguity
+  signal tdl_bank_prev_q  : T_TDL_THERM_ARRAY;
   signal tdl_captured     : T_TDL_THERM_ARRAY;
 
-  -- Gray counter (banked like TDL for alignment)
+  -- Coarse counter and timestamps
   signal coarse_counter_bin : unsigned(GC_COARSE_BITS - 1 downto 0) := (others => '0');
+  signal start_coarse_hold  : unsigned(GC_COARSE_BITS - 1 downto 0) := (others => '0');
+  signal stop_coarse_bin    : unsigned(GC_COARSE_BITS - 1 downto 0) := (others => '0');
 
-  -- Start/Stop timestamps
-  -- Start coarse: HELD (not pipelined) to preserve actual start time for correct delta
-  signal start_coarse_hold : unsigned(GC_COARSE_BITS - 1 downto 0) := (others => '0');
+  -- Pipeline delay signals
+  signal start_coarse_at_mark                                                                   : unsigned(GC_COARSE_BITS - 1 downto 0) := (others => '0');
+  signal start_coarse_pipe_d1, start_coarse_pipe_d2, start_coarse_pipe_d3, start_coarse_pipe_d4 : unsigned(GC_COARSE_BITS - 1 downto 0);
+  signal start_coarse_pipe_d5, start_coarse_pipe_d6, start_coarse_pipe_d7, start_coarse_pipe_d8 : unsigned(GC_COARSE_BITS - 1 downto 0);
+  signal stop_coarse_pipe_d1, stop_coarse_pipe_d2, stop_coarse_pipe_d3, stop_coarse_pipe_d4     : unsigned(GC_COARSE_BITS - 1 downto 0);
+  signal stop_coarse_pipe_d5, stop_coarse_pipe_d6, stop_coarse_pipe_d7, stop_coarse_pipe_d8     : unsigned(GC_COARSE_BITS - 1 downto 0);
+  signal analog_stop_mark_d1, analog_stop_mark_d2, analog_stop_mark_d3, analog_stop_mark_d4     : std_logic                             := '0';
+  signal analog_stop_mark_d5, analog_stop_mark_d6, analog_stop_mark_d7, analog_stop_mark_d8     : std_logic                             := '0';
+  signal analog_stop_mark_pipe, analog_stop_mark_comp_pre, analog_stop_mark_comp                : std_logic                             := '0';
 
-  signal stop_coarse_bin : unsigned(GC_COARSE_BITS - 1 downto 0)   := (others => '0');
-  signal stop_fine_fp    : unsigned(C_FINE_FRAC_BITS - 1 downto 0) := (others => '0');
-
-  signal start_coarse_at_mark : unsigned(GC_COARSE_BITS - 1 downto 0) := (others => '0');
-  signal start_coarse_pipe_d1 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal start_coarse_pipe_d2 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal start_coarse_pipe_d3 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal start_coarse_pipe_d4 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal start_coarse_pipe_d5 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal start_coarse_pipe_d6 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal start_coarse_pipe_d7 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal start_coarse_pipe_d8 : unsigned(GC_COARSE_BITS - 1 downto 0);
-
-  -- Pipeline delay registers to align coarse+stop_mark with 8-stage fine processing
-  signal stop_coarse_pipe_d1 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal stop_coarse_pipe_d2 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal stop_coarse_pipe_d3 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal stop_coarse_pipe_d4 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal stop_coarse_pipe_d5 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal stop_coarse_pipe_d6 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal stop_coarse_pipe_d7 : unsigned(GC_COARSE_BITS - 1 downto 0);
-  signal stop_coarse_pipe_d8 : unsigned(GC_COARSE_BITS - 1 downto 0);
-
-  signal analog_stop_mark_d1       : std_logic := '0';
-  signal analog_stop_mark_d2       : std_logic := '0';
-  signal analog_stop_mark_d3       : std_logic := '0';
-  signal analog_stop_mark_d4       : std_logic := '0';
-  signal analog_stop_mark_d5       : std_logic := '0';
-  signal analog_stop_mark_d6       : std_logic := '0';
-  signal analog_stop_mark_d7       : std_logic := '0';
-  signal analog_stop_mark_d8       : std_logic := '0';
-  signal analog_stop_mark_pipe     : std_logic := '0';
-  signal analog_stop_mark_comp_pre : std_logic := '0'; -- Extra pipeline stage for dcoarse alignment
-  signal analog_stop_mark_comp     : std_logic := '0';
-
-  -- Digital Time-DAC command (applied in interval computation)
-  -- 0.0 initial allows Stage II centering to work immediately, loop can start
-  signal time_dac_cmd_fp : signed(C_FINE_FRAC_BITS downto 0) := to_signed(0, C_FINE_FRAC_BITS + 1);
-
-  signal time_dac_cmd_ext_d1 : signed(C_TIME_FP_BITS - 1 downto 0);
-  signal time_dac_cmd_ext_d2 : signed(C_TIME_FP_BITS - 1 downto 0);
-  signal time_dac_cmd_ext_d3 : signed(C_TIME_FP_BITS - 1 downto 0);
-  signal time_dac_cmd_ext_d4 : signed(C_TIME_FP_BITS - 1 downto 0);
-  signal time_dac_cmd_ext_d5 : signed(C_TIME_FP_BITS - 1 downto 0);
-  signal time_dac_cmd_ext_d6 : signed(C_TIME_FP_BITS - 1 downto 0);
-  signal time_dac_cmd_ext_d7 : signed(C_TIME_FP_BITS - 1 downto 0);
-  signal time_dac_cmd_ext_d8 : signed(C_TIME_FP_BITS - 1 downto 0);
-  signal time_dac_cmd_ext_d9 : signed(C_TIME_FP_BITS - 1 downto 0);
-
-  -- Registered, pipeline-aligned interval (before TDAC subtraction)
-  signal s_delta_meas     : signed(C_TIME_FP_BITS - 1 downto 0) := (others => '0'); -- Intermediate: delta_t = (delta_coarse<<F) + delta_fine
-  signal s_delta_meas_adj : signed(C_TIME_FP_BITS - 1 downto 0) := (others => '0'); -- Final: delta_t - TDAC
-
-  -- Coarse delta computed as SIGNED from the start (prevents wraparound artifacts)
-  signal dcoarse_signed_raw : signed(GC_COARSE_BITS downto 0); -- 9 bits for 8-bit coarse (signed)
+  -- Time DAC and interval signals (currently disabled)
+  signal s_delta_meas       : signed(C_TIME_FP_BITS - 1 downto 0) := (others => '0');
+  signal s_delta_meas_adj   : signed(C_TIME_FP_BITS - 1 downto 0) := (others => '0');
+  signal dcoarse_signed_raw : signed(GC_COARSE_BITS downto 0);
 
   -- Auto-calibration: histogram of dcoarse_signed_raw for first 16 samples
   type   T_CALIB_HISTOGRAM      is array (0 to 255) of unsigned(3 downto 0); -- Count 0-15 for each bucket (256 bins for 8-bit coarse)
@@ -251,50 +176,37 @@ architecture rtl of tdc_quantizer is
 
   -- Pipeline registers to break search comparison timing path
   signal calib_hist_read_d1  : unsigned(3 downto 0)   := (others => '0'); -- Histogram value read for comparison
-  signal calib_search_idx_d1 : integer range 0 to 255 := 0; -- Index for comparison result
+  signal calib_search_idx_d1 : integer range 0 to 255 := 0;
 
-  -- Pipeline/register helpers to break window-check long path
-  signal s_d_used_stage  : signed(GC_COARSE_BITS downto 0)     := (others => '0'); -- Registered chosen coarse for window check
-  signal s_dfine_u_stage : unsigned(C_FINE_FRAC_BITS downto 0) := (others => '0'); -- Registered fine ext (unsigned form)
-  signal s_vld_pre       : std_logic                           := '0'; -- Pre-valid flag captured in Stage-1b, used by p_win_check to drive s_vld_pipe(0)
+  -- Pipeline/register helpers for window check
+  signal s_vld_pre : std_logic := '0';
 
   -- Fine codes
   signal fine_codes_raw : T_FINE_CODE_ARRAY;
   signal fine_codes_fp  : T_FINE_FP_ARRAY;
   signal lane_offsets   : T_FINE_FP_ARRAY;
-  signal lane_scales    : T_LANE_SCALE_ARRAY; -- Q1.15 per-lane gain
+  signal lane_scales    : T_LANE_SCALE_ARRAY;
   signal fine_avg_fp    : unsigned(C_FINE_FRAC_BITS - 1 downto 0);
 
-  -- Pipelined averaging tree signals (2-stage balanced tree for timing closure @ 400 MHz)
-  signal sum01_r : unsigned(C_FINE_FRAC_BITS downto 0); -- Pair sum: lane 0+1 (with carry bit)
-  signal sum23_r : unsigned(C_FINE_FRAC_BITS downto 0); -- Pair sum: lane 2+3 (with carry bit)
+  -- Pipelined averaging
+  signal sum01_r : unsigned(C_FINE_FRAC_BITS downto 0);
+  signal sum23_r : unsigned(C_FINE_FRAC_BITS downto 0);
 
-  -- Pipelined encoder intermediate signals
-  signal tdl_captured_reg : T_TDL_THERM_ARRAY; -- Registered TDL capture for timing
-  signal group_counts     : T_LANE_GROUP_COUNTS; -- Stage A output: popcount per group
-  signal partial_sums     : T_LANE_PARTIAL_SUMS; -- Stage B1 output: partial sums (4 groups each)
+  -- Pipelined encoder signals
+  signal tdl_captured_reg : T_TDL_THERM_ARRAY;
+  signal group_counts     : T_LANE_GROUP_COUNTS;
+  signal partial_sums     : T_LANE_PARTIAL_SUMS;
 
-  -- Interval computation pipeline stages (3-stage split for timing closure @ 400 MHz)
-  -- Stage I: Window check
-  signal s_win_ok1     : std_logic                            := '0';
-  signal s_win_ok_pipe : std_logic_vector(2 downto 0)         := (others => '0'); -- Pipeline for window check result
-  -- Stage II: Error computation, centering, range check
+  -- Interval computation pipeline
+  signal s_win_ok_pipe : std_logic_vector(2 downto 0)         := (others => '0');
   signal s_centered    : signed(C_TIME_FP_BITS - 1 downto 0)  := (others => '0');
-  signal s_ovf2        : std_logic                            := '0';
-  -- Valid pipeline (6-bit shift register for additional timing stages)
   signal s_vld_pipe    : std_logic_vector(5 downto 0)         := (others => '0');
-  -- Stage III-A: Rounding addition (separate cycle)
-  signal s_round_sum   : signed(C_TIME_FP_BITS - 1 downto 0)  := (others => '0'); -- s_centered + round_const
-  signal s_ovf_a       : std_logic                            := '0'; -- Overflow check result (pipelined)
-  -- Stage III-B: Shift and resize (separate cycle)
-  signal s_shifted     : signed(GC_OUTPUT_WIDTH - 1 downto 0) := (others => '0'); -- After right-shift
-  signal s_ovf_b       : std_logic                            := '0'; -- Overflow forwarded
-  -- Stage III-C: Polarity application (separate cycle)
-  signal s_rounded     : signed(GC_OUTPUT_WIDTH - 1 downto 0) := (others => '0'); -- After polarity
-  signal s_ovf_pipe    : std_logic                            := '0'; -- Pipeline overflow check result
-
-  -- Window check intermediate signals (coarse bias adjustment)
-  signal dcoarse_adjusted : signed(GC_COARSE_BITS downto 0) := (others => '0'); -- After subtracting bias
+  signal s_round_sum   : signed(C_TIME_FP_BITS - 1 downto 0)  := (others => '0');
+  signal s_ovf_a       : std_logic                            := '0';
+  signal s_shifted     : signed(GC_OUTPUT_WIDTH - 1 downto 0) := (others => '0');
+  signal s_ovf_b       : std_logic                            := '0';
+  signal s_rounded     : signed(GC_OUTPUT_WIDTH - 1 downto 0) := (others => '0');
+  signal s_ovf_pipe    : std_logic                            := '0';
 
   -- ========================================================================
   -- Stage-1a/1b/1c/1d/1e Dual-Lobe Bias Selection Pipeline (synthesizer-friendly, no integer math)
@@ -302,7 +214,6 @@ architecture rtl of tdc_quantizer is
   -- Stage-1a: Register inputs at comp edge, compute three candidate adjustments
   signal dcoarse_signed_at_comp : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- dcoarse_signed_raw frozen at comp edge (breaks timing path)
   signal fine_at_comp           : unsigned(C_FINE_FRAC_BITS - 1 downto 0) := (others => '0'); -- fine_avg_fp frozen at comp edge
-  signal bias_at_comp           : unsigned(7 downto 0)                    := (others => '0'); -- coarse_bias frozen at comp edge (8-bit)
   signal adj0_s1                : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- raw - bias0
   signal adjm_s1                : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- raw - (bias-3)
   signal adjp_s1                : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- raw - (bias+3)
@@ -324,40 +235,27 @@ architecture rtl of tdc_quantizer is
   signal d_used_s1              : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- Chosen adjusted coarse (legacy name)
   signal dfine_ext_s1b          : signed(C_FINE_FRAC_BITS + 1 downto 0)   := (others => '0'); -- Fine with +-1.0 bias (registered for timing)
   signal s1d_valid              : std_logic                               := '0'; -- Handshake: Stage-1d->1e
-  -- Stage-1e: 24-bit delta computation
-  signal dfine_ext_s2           : signed(C_FINE_FRAC_BITS + 1 downto 0)   := (others => '0'); -- Fine with +-1.0 bias (legacy name, kept for Stage-II)
-  -- ========================================================================
 
-  -- Output (buffered for start-synchronous delivery)
+  -- Output signals
   signal tdc_result_buf    : signed(GC_OUTPUT_WIDTH - 1 downto 0);
   signal overflow_buf      : std_logic := '0';
-  signal sample_ready      : std_logic := '0'; -- Internal flag: sample captured on Stop
+  signal sample_ready      : std_logic := '0';
   signal tdc_result        : signed(GC_OUTPUT_WIDTH - 1 downto 0);
   signal tdc_valid_i       : std_logic := '0';
   signal overflow_i        : std_logic := '0';
-  signal lost_sample_latch : std_logic := '0'; -- Sticky flag for overflow tracking
+  signal lost_sample_latch : std_logic := '0';
 
-  -- Time-DAC enable control (prevents deadlock on startup)
-  -- Time-DAC accumulator must stay at zero until first valid sample is produced,
-  -- otherwise the window check rejects every measurement (Catch-22 deadlock)
-  signal tdac_enable_after_lock : std_logic := '0';
+  -- Window failure CDC (currently unused - toggle detection for debug)
+  signal win_fail_toggle : std_logic := '0';
 
-  -- Window failure CDC (clk_tdc -> clk_sys) - toggle-based handshake
-  signal win_fail_toggle       : std_logic := '0'; -- Toggles in clk_tdc when s_win_ok1='0'
-  signal win_fail_toggle_sync0 : std_logic := '0'; -- 1st sync stage
-  signal win_fail_toggle_sync1 : std_logic := '0'; -- 2nd sync stage
-  signal win_fail_toggle_sync2 : std_logic := '0'; -- 3rd sync stage
-
-  -- Calibration
+  -- Calibration LUT
   signal cal_lut : T_CAL_LUT;
 begin
 
-  -- ========================================================================
-  -- Reset Synchronization (clk_sys -> clk_tdc)
-  -- ========================================================================
+  -- Reset Synchronizer
   i_reset_sync : entity work.reset_synchronizer
     generic map(
-      GC_ACTIVE_LOW => false            -- Active-high reset
+      GC_ACTIVE_LOW => false
     )
     port map(
       clk       => clk_tdc,
@@ -365,14 +263,9 @@ begin
       sync_rst  => reset_tdc
     );
 
-  -- ========================================================================
-  -- LVDS Input (Quartus-managed differential pair with LVDS_E_3V standard)
-  -- ========================================================================
   analog_crossing <= analog_in;
 
-  -- ========================================================================
-  -- Gray-Coded Free-Running Coarse Counter (with banking like TDL)
-  -- ========================================================================
+  -- Coarse Counter
   p_coarse_counter : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -381,20 +274,9 @@ begin
     end if;
   end process;
 
-  g_tdac_off : if false generate        -- Time DAC disabled, tie to zero
-    -- Hard-tie everything to zero so every bit has a real driver and the nets are kept consistent.
-    -- (Keeps timing/pipeline structure intact, but subtracts 0.)
-    p_time_dac_cmd_tieoff : process(clk_tdc)
-    begin
-      if rising_edge(clk_tdc) then
-        time_dac_cmd_fp <= (others => '0');
-      end if;
-    end process;
-  end generate;
+  -- Note: Time DAC code removed (was disabled via false generate)
 
-  -- ========================================================================
-  -- Start Pulse Generation (Direct Edge Detection on ref_phases(0))
-  -- ========================================================================
+  -- Start Pulse Generation
   p_start_edge_detect : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -413,13 +295,7 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
-  -- Arm/Disarm Logic (One Stop Per Reference Period)
-  -- ========================================================================
-  -- Armed set on Start pulse, cleared on first valid Stop edge
-  -- Prevents late/extra LVDS crossings from corrupting interval
-  -- Power-on default: disarmed (armed := '0'), first start_pulse will arm
-  -- Captures LVDS level at Start for first-transition detection
+  -- Arm/Disarm Logic
   p_arm_control : process(clk_tdc)
     variable v_start_count : integer range 0 to 1000000 := 0;
   begin
@@ -432,24 +308,20 @@ begin
         stop_level_at_start <= analog_sync(2); -- Remember LVDS level at Start for transition detection
         -- Debug: Report every 20th start pulse to show TDC is receiving reference clocks
         v_start_count       := v_start_count + 1;
-        if GC_SIM and (v_start_count <= 15 or (v_start_count mod 100) = 0) then
+        if GC_SIM and (v_start_count <= 5 or (v_start_count mod 5000) = 0) then
           report "TDC_START: pulse #" & integer'image(v_start_count) & " analog_sync=" & std_logic'image(analog_sync(2)) & " sample_ready=" & std_logic'image(sample_ready) & " at " & time'image(now);
         end if;
       -- edge_inhibit cleared in p_stop_sync process to avoid multiple drivers
       elsif (analog_stop_mark = '1' and armed = '1') then
         armed <= '0';                   -- Disarm on Stop (only when start not active)
-        if GC_SIM and (v_start_count <= 20 or (v_start_count mod 100) = 0) then
+        if GC_SIM and (v_start_count <= 5 or (v_start_count mod 5000) = 0) then
           report "TDC_STOP: analog_stop_mark detected, disarming at " & time'image(now);
         end if;
       end if;
     end if;
   end process;
 
-  -- ========================================================================
-  -- Stop Mark Synchronization with Multi-Cycle Inhibit and Arming
-  -- ========================================================================
-  -- Edge detector with 2-cycle inhibit + armed gating
-  -- Detects first transition from level captured at Start (either polarity)
+  -- Stop Mark Synchronization
   p_stop_sync : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -477,9 +349,7 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
-  -- TDL Chains with Continuous Sampling
-  -- ========================================================================
+  -- TDL Chains
   g_tdl_lanes : for lane in 0 to GC_TDL_LANES - 1 generate
     signal    tdl_delay_chain         : std_logic_vector(0 to GC_TDL_LENGTH);
     attribute KEEP of tdl_delay_chain : signal is true;
@@ -514,11 +384,7 @@ begin
       end if;
     end process;
 
-    -- ======================================================================
-    -- Register TDL Captured Data for Timing Closure
-    -- ======================================================================
-    -- Additional pipeline stage to break the long combinational path from
-    -- tdl_captured through bubble filter, monotone clamp, and popcount
+    -- Register TDL for timing
     p_tdl_register : process(clk_tdc)
     begin
       if rising_edge(clk_tdc) then
@@ -528,16 +394,7 @@ begin
 
   end generate;
 
-  -- ========================================================================
-  -- Four-Stage Thermometer-to-Binary Encoder (clk_tdc)
-  -- ========================================================================
-  -- Stage 0: Register TDL capture (tdl_captured -> tdl_captured_reg)
-  --          Breaks long combinational path for timing
-  -- Stage 1: Bubble filter + monotone clamp + group popcount (16× parallel)
-  -- Stage 2: Partial sums (4 groups of 4 counts each)
-  -- Stage 3: Final sum (16 counts -> fine_codes_raw)
-  --
-  -- Total encoder pipeline: 4 cycles (Stage 0 + Stage 1 + Stage 2 + Stage 3)
+  -- Thermometer-to-Binary Encoder (4-stage pipelined)
   g_encoder : for lane in 0 to GC_TDL_LANES - 1 generate
 
     -- Intermediate signals for pipelined encoder
@@ -552,22 +409,15 @@ begin
     signal group_clamp_reg : std_logic_vector(GC_TDL_LENGTH - 1 downto 0);
     signal group_any_reg   : std_logic_vector(C_POPCOUNT_GROUPS - 1 downto 0);
     signal group_prefix_on : std_logic_vector(C_POPCOUNT_GROUPS - 1 downto 0);
-
-    -- Level-B prefix OR pipeline registers (timing closure @ 400 MHz)
-    -- Split 16-deep chain into two 8-deep stages to meet timing
-    signal prefix_half_a   : std_logic_vector(7 downto 0); -- Groups 0..7 prefix OR (combinatorial)
-    signal prefix_half_a_r : std_logic_vector(7 downto 0); -- Registered first half
-    signal prior_on_r      : std_logic; -- Registered flag: any of groups 0..7 had '1'
-
-    -- B2 split registers (timing closure @ 400 MHz)
-    signal sum_b2_01_r : unsigned(C_TDL_BITS - 1 downto 0);
-    signal sum_b2_23_r : unsigned(C_TDL_BITS - 1 downto 0);
+    signal prefix_half_a   : std_logic_vector(7 downto 0);
+    signal prefix_half_a_r : std_logic_vector(7 downto 0);
+    signal prior_on_r      : std_logic;
+    signal sum_b2_01_r     : unsigned(C_TDL_BITS - 1 downto 0);
+    signal sum_b2_23_r     : unsigned(C_TDL_BITS - 1 downto 0);
 
   begin
 
-    -- ======================================================================
-    -- Combinational: 3-tap Majority Bubble Filter
-    -- ======================================================================
+    -- Bubble Filter (3-tap majority)
     p_bubble_filter : process(all)
     begin
       -- Edge taps pass through
@@ -584,10 +434,7 @@ begin
       end loop;
     end process;
 
-    -- ======================================================================
-    -- Register: Bubble Filter Output
-    -- ======================================================================
-    -- Pipeline stage to break combinational path before clamp
+    -- Register bubble filter output
     p_filt_reg : process(clk_tdc)
     begin
       if rising_edge(clk_tdc) then
@@ -595,14 +442,7 @@ begin
       end if;
     end process;
 
-    -- ======================================================================
-    -- Hierarchical Monotone Clamp (2-Level: 8-bit intra, 16-bit inter)
-    -- ======================================================================
-    -- Level-A: Intra-group running OR (8-bit prefix per group)
-    -- Level-B: Inter-group prefix OR (16 groups) + expansion
-    -- This keeps both chains short: max 8-bit or 16-bit prefix depth
-
-    -- Level-A: Within each 8-bit group, compute running OR
+    -- Hierarchical Monotone Clamp (2-Level)
     g_group_clamp : for g in 0 to C_POPCOUNT_GROUPS - 1 generate
       constant C_L : integer := g * C_GROUP_SIZE;
       constant C_R : integer := g * C_GROUP_SIZE + C_GROUP_SIZE - 1;
@@ -627,11 +467,7 @@ begin
       end if;
     end process;
 
-    -- ======================================================================
-    -- Level-B: Prefix OR over 16 groups (PIPELINED for 400 MHz timing)
-    -- ======================================================================
-    -- Split into two 8-deep stages to reduce critical path from 16 → 8 gates
-    -- Stage B-prefix-1: Groups 0..7 (8-deep chain, combinatorial)
+    -- Level-B: Prefix OR over 16 groups (pipelined)
     prefix_half_a(0) <= group_any_reg(0);
     g_prefix_first_half : for g in 1 to 7 generate
     begin
@@ -696,9 +532,7 @@ begin
       end if;
     end process;
 
-    -- ======================================================================
-    -- Stage A: Group Popcount (Registered)
-    -- ======================================================================
+    -- Stage A: Group Popcount
     p_encode_stage_a : process(clk_tdc)
       variable v_popcount : integer range 0 to C_GROUP_SIZE;
     begin
@@ -718,11 +552,7 @@ begin
       end if;
     end process;
 
-    -- ======================================================================
-    -- Stage B1: Partial Sums (Registered) - Timing Closure at 400 MHz
-    -- ======================================================================
-    -- Split 16 groups into 4 partial sums (groups 0-3, 4-7, 8-11, 12-15)
-    -- This breaks the tall adder tree into two shallower stages
+    -- Stage B1: Partial Sums
     p_encode_stage_b1 : process(clk_tdc)
       variable v_partial : unsigned(C_TDL_BITS - 1 downto 0);
     begin
@@ -738,9 +568,7 @@ begin
       end if;
     end process;
 
-    -- ======================================================================
-    -- Stage B2a: Pairwise Add (Registered) - Timing Closure @ 400 MHz
-    -- ======================================================================
+    -- Stage B2a: Pairwise Add
     p_encode_stage_b2a : process(clk_tdc)
     begin
       if rising_edge(clk_tdc) then
@@ -749,9 +577,7 @@ begin
       end if;
     end process;
 
-    -- ======================================================================
-    -- Stage B2b: Final Add to Fine Code (Registered)
-    -- ======================================================================
+    -- Stage B2b: Final Add
     p_encode_stage_b2b : process(clk_tdc)
     begin
       if rising_edge(clk_tdc) then
@@ -761,9 +587,7 @@ begin
 
   end generate;
 
-  -- ========================================================================
-  -- Calibration LUT (Normalized to Tclk_tdc, no ps constants)
-  -- ========================================================================
+  -- Calibration LUT
   p_calibration : process(clk_sys)
   begin
     if rising_edge(clk_sys) then
@@ -792,6 +616,7 @@ begin
     end if;
   end process;
 
+  -- Apply calibration per lane
   g_calibrate : for lane in 0 to GC_TDL_LANES - 1 generate
     p_cal_apply : process(clk_tdc)
       variable v_idx    : integer range 0 to GC_TDL_LENGTH;
@@ -816,13 +641,18 @@ begin
           else
             -- Wrap around: (v_cal_fp + 1.0) - offset
             -- In Q0.16: add 2^16 then subtract offset
-            v_cal_fp := (v_cal_fp + to_unsigned(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS)) - lane_offsets(lane);
+            -- Use resize to avoid truncation warning (result wraps naturally in 16 bits)
+            v_cal_fp := resize(('0' & v_cal_fp) + to_unsigned(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS + 1) - ('0' & lane_offsets(lane)), C_FINE_FRAC_BITS);
           end if;
 
           -- 4) Final modulo wrap if result exceeds 1.0 (can happen after gain > 1.0)
           --    Keep circular statistics consistent for averaging
-          if v_cal_fp >= to_unsigned(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS) then
-            fine_codes_fp(lane) <= v_cal_fp - to_unsigned(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS);
+          -- Note: With 16-bit unsigned, v_cal_fp can never equal 2^16 (65536)
+          -- since max value is 65535. This check is only needed if we extend
+          -- intermediate precision in the future. Keeping structure for clarity.
+          -- The comparison uses a 17-bit constant to avoid truncation warning.
+          if ('0' & v_cal_fp) >= to_unsigned(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS + 1) then
+            fine_codes_fp(lane) <= resize(('0' & v_cal_fp) - to_unsigned(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS + 1), C_FINE_FRAC_BITS);
           else
             fine_codes_fp(lane) <= v_cal_fp;
           end if;
@@ -833,13 +663,7 @@ begin
     end process;
   end generate;
 
-  -- ========================================================================
-  -- Pipelined Lane Averaging (2-Stage Balanced Tree for Timing Closure @ 400 MHz)
-  -- ========================================================================
-  -- Stage A: Pairwise addition (lanes 0+1, 2+3) with register
-  -- Stage B: Final sum + divide-by-4 with register
-  -- Total: 2 cycles (cuts critical carry length by 1/2 compared to single-stage sum)
-
+  -- Lane Averaging (2-stage)
   p_avg_stage_a : process(clk_tdc)
     variable v_s01, v_s23 : unsigned(C_FINE_FRAC_BITS downto 0);
   begin
@@ -852,11 +676,8 @@ begin
   end process;
 
   p_avg_stage_b : process(clk_tdc)
-    variable v_ssum      : unsigned(C_FINE_FRAC_BITS + 1 downto 0);
-    variable v_avg       : unsigned(C_FINE_FRAC_BITS - 1 downto 0);
-    -- synthesis translate_off
-    variable v_fine_seen : integer range 0 to 100000 := 0;
-    -- synthesis translate_on
+    variable v_ssum : unsigned(C_FINE_FRAC_BITS + 1 downto 0);
+    variable v_avg  : unsigned(C_FINE_FRAC_BITS - 1 downto 0);
   begin
     if rising_edge(clk_tdc) then
       v_ssum      := ('0' & sum01_r) + ('0' & sum23_r);
@@ -879,9 +700,7 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
-  -- Start Timestamp Capture (coordinated banking with Stop path)
-  -- ========================================================================
+  -- Start Timestamp Capture
   p_start_timestamp : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -892,11 +711,7 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
-  -- Stop Timestamp Capture (simple direct counter)
-  -- ========================================================================
-  -- p_stop_timestamp: Capture coarse+fine timestamps when Stop event occurs
-  -- Coarse captured immediately (direct counter read)
+  -- Stop Timestamp Capture
   p_stop_timestamp : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -907,15 +722,10 @@ begin
         start_coarse_at_mark <= start_coarse_hold;
       end if;
 
-      if analog_stop_mark_comp = '1' then
-        stop_fine_fp <= fine_avg_fp;
-      end if;
     end if;
   end process;
 
-  -- ========================================================================
   -- Pipeline Delay Compensation
-  -- ========================================================================
   p_pipe_delay : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -953,36 +763,22 @@ begin
       if analog_stop_mark_pipe = '1' then
         if signed('0' & stop_coarse_pipe_d8) - signed('0' & start_coarse_pipe_d8) < -128 then
           -- Wraparound detected: add 256 to get correct positive difference
-          dcoarse_signed_raw <= signed('0' & stop_coarse_pipe_d8) - signed('0' & start_coarse_pipe_d8) + 256;
-          -- Debug enabled
-          -- synthesis translate_off
-          if GC_SIM then
-            report "TDC_QUANTIZER Coarse: dcoarse_raw=" & integer'image(to_integer(signed('0' & stop_coarse_pipe_d8) - signed('0' & start_coarse_pipe_d8) + 256)) & " (wraparound, stop=" & integer'image(to_integer(unsigned(stop_coarse_pipe_d8))) & " start=" & integer'image(to_integer(unsigned(start_coarse_pipe_d8))) & ")";
-          end if;
-        -- synthesis translate_on
+          -- Use 10-bit signed intermediate to avoid TO_SIGNED truncation (256 needs 10 bits as positive signed)
+          dcoarse_signed_raw <= resize(
+            resize(signed('0' & stop_coarse_pipe_d8), GC_COARSE_BITS + 2) -
+            resize(signed('0' & start_coarse_pipe_d8), GC_COARSE_BITS + 2) +
+            to_signed(256, GC_COARSE_BITS + 2), GC_COARSE_BITS + 1);
         else
           -- Normal case: use raw difference
           dcoarse_signed_raw <= signed('0' & stop_coarse_pipe_d8) - signed('0' & start_coarse_pipe_d8);
-          -- Debug enabled
-          -- synthesis translate_off
-          if GC_SIM then
-            report "TDC_QUANTIZER Coarse: dcoarse_raw=" & integer'image(to_integer(signed('0' & stop_coarse_pipe_d8) - signed('0' & start_coarse_pipe_d8))) & " (normal, stop=" & integer'image(to_integer(unsigned(stop_coarse_pipe_d8))) & " start=" & integer'image(to_integer(unsigned(start_coarse_pipe_d8))) & ")";
-          end if;
-          -- synthesis translate_on
         end if;
       end if;
     end if;
   end process;
 
-  -- ========================================================================
-  -- Auto-Bootstrap Bias Calibration (First 16 samples after reset)
-  -- ========================================================================
-  -- Accumulates histogram of dcoarse_signed_raw for first 16 samples
-  -- Finds the mode (most common value) and uses it as coarse_bias
-  -- This allows the system to self-calibrate to any board's actual delay
-  -- without requiring manual tuning or MMIO access
+  -- Auto-Bootstrap Bias Calibration
   p_auto_calibration : process(clk_tdc)
-    variable v_dcoarse_idx : integer range 0 to 255; -- Full 8-bit range for 256-bin histogram
+    variable v_dcoarse_idx : integer range 0 to 255;
   begin
     if rising_edge(clk_tdc) then
       if reset_tdc = '1' then
@@ -1096,28 +892,9 @@ begin
     end if;                             -- rising_edge
   end process;
 
-  g_tdac_pipeline_off : if false generate -- Time DAC disabled, tie pipeline to zero
-    -- Hard-tie pipeline to zero so every bit has a real driver
-    p_time_dac_pipe_tieoff : process(clk_tdc)
-    begin
-      if rising_edge(clk_tdc) then
-        time_dac_cmd_ext_d1 <= (others => '0');
-        time_dac_cmd_ext_d2 <= (others => '0');
-        time_dac_cmd_ext_d3 <= (others => '0');
-        time_dac_cmd_ext_d4 <= (others => '0');
-        time_dac_cmd_ext_d5 <= (others => '0');
-        time_dac_cmd_ext_d6 <= (others => '0');
-        time_dac_cmd_ext_d7 <= (others => '0');
-        time_dac_cmd_ext_d8 <= (others => '0');
-        time_dac_cmd_ext_d9 <= (others => '0');
-      end if;
-    end process;
-  end generate;
+  -- Note: Time DAC pipeline code removed (was disabled via false generate)
 
-  -- ========================================================================
-  -- Stage I: Dual-Lobe Bias Selection (Split into 1a and 1b for Synthesis)
-  -- ========================================================================
-  -- Mux between input coarse_bias and auto-calibrated value
+  -- Dual-Lobe Bias Selection
   coarse_bias_effective <= coarse_bias_calibrated when (calib_done = '1') else coarse_bias;
 
   -- Debug: report when effective bias changes
@@ -1132,19 +909,7 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
-  -- Continuous register of dcoarse_signed_raw to break timing path
-  -- ========================================================================
-  -- This register captures dcoarse_signed_raw on EVERY cycle, so that when
-  -- analog_stop_mark_comp arrives, we can use the already-registered value
-  -- instead of the raw combinational dcoarse_signed_raw.
-  -- 
-  -- CRITICAL: Due to VHDL signal update semantics (delta delay), when both
-  -- dcoarse_signed_raw and dcoarse_signed_at_comp are assigned on the same
-  -- clock edge, dcoarse_signed_at_comp captures the OLD value of dcoarse_signed_raw.
-  -- To align properly, analog_stop_mark_comp is delayed by one extra cycle
-  -- relative to analog_stop_mark_pipe, matching the dcoarse_signed_at_comp delay.
-
+  -- Continuous dcoarse registration
   p_dcoarse_register : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -1158,13 +923,7 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
-  -- Stage-1a: Capture Inputs and Compute Bias Adjustment Candidates
-  -- ========================================================================
-  -- At comp edge, freeze bias/fine and compute three candidate adjusted coarse values:
-  --   adj0_s1: raw - bias0       (primary lobe)
-  --   adjm_s1: raw - (bias0-3)   (lower lobe, -3 cycles)
-  --   adjp_s1: raw - (bias0+3)   (upper lobe, +3 cycles)
+  -- Stage-1a: Compute Bias Adjustment Candidates
   p_stage1a : process(clk_tdc)
     variable v_b0_s : signed(GC_COARSE_BITS downto 0);
     variable v_bm_s : signed(GC_COARSE_BITS downto 0);
@@ -1174,8 +933,7 @@ begin
       s1a_valid <= '0';                 -- Default: no new data
 
       if analog_stop_mark_comp = '1' then
-        -- Freeze bias and fine at comp edge
-        bias_at_comp <= coarse_bias_effective;
+        -- Freeze fine at comp edge
         fine_at_comp <= fine_avg_fp;
 
         -- Build three bias candidates: {bias0, bias0-3, bias0+3}
@@ -1188,10 +946,8 @@ begin
         adjm_s1 <= dcoarse_signed_at_comp - v_bm_s; -- Lower lobe (bias-3)
         adjp_s1 <= dcoarse_signed_at_comp - v_bp_s; -- Upper lobe (bias+3)
 
+        -- Debug disabled for speed (was TDC_STAGE1A)
         -- synthesis translate_off
-        if GC_SIM then
-          report "TDC_STAGE1A: dcoarse=" & integer'image(to_integer(dcoarse_signed_at_comp)) & " bias=" & integer'image(to_integer(coarse_bias_effective)) & " adj0=" & integer'image(to_integer(dcoarse_signed_at_comp - v_b0_s)) & " at " & time'image(now);
-        end if;
         -- synthesis translate_on
 
         s1a_valid <= '1';               -- Signal to Stage-1b: fresh data available next cycle
@@ -1199,9 +955,7 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
   -- Stage-1b: Magnitude Calculation
-  -- ========================================================================
   p_stage1b : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -1226,12 +980,7 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
-  -- Stage-1c: Min-of-Three Selection, Window Check, and dfine Construction
-  -- ========================================================================
-  -- This process implements the core of the dual-lobe bias selection fix.
-  -- It selects the minimum-magnitude adjustment from {adj0, adjm, adjp},
-  -- computes dfine based on the selected candidate, and validates the window.
+  -- Stage-1c: Min-of-Three Selection and dfine Construction
   p_stage1c : process(clk_tdc)
     variable v_d_used     : signed(GC_COARSE_BITS downto 0);
     variable v_mag_winner : unsigned(GC_COARSE_BITS downto 0);
@@ -1279,18 +1028,13 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
   -- Stage-1d: dfine Construction + Window Check
-  -- ========================================================================
   p_stage1d : process(clk_tdc)
     variable v_dfine_ext : signed(C_FINE_FRAC_BITS + 1 downto 0);
-    variable v_win_ok    : std_logic;
   begin
     if rising_edge(clk_tdc) then
       if s1c_valid = '1' then
-        -- ======================================================================
         -- Compute dfine_ext Based on Chosen Adjusted Coarse
-        -- ======================================================================
         if d_used_s1c = to_signed(-1, GC_COARSE_BITS + 1) then
           -- Previous cycle: stop_fine + 1.0
           v_dfine_ext := signed('0' & fine_s1c) + to_signed(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS + 2);
@@ -1306,33 +1050,12 @@ begin
         end if;
 
         dfine_ext_s1b <= v_dfine_ext;   -- Register for Stage-1e
-        dfine_ext_s2  <= v_dfine_ext;   -- Also update legacy signal for Stage-II
 
-        v_win_ok := '0';                -- Default to fail
+        -- Register chosen coarse
+        d_used_s1 <= d_used_s1c;
 
-        if d_used_s1c = to_signed(0, GC_COARSE_BITS + 1) then
-          v_win_ok := '1';              -- Always valid (dfine >= 0 by construction)
-        elsif d_used_s1c = to_signed(1, GC_COARSE_BITS + 1) then
-          -- Valid only if dfine < 0
-          if v_dfine_ext < to_signed(0, v_dfine_ext'length) then
-            v_win_ok := '1';
-          end if;
-        elsif d_used_s1c = to_signed(-1, GC_COARSE_BITS + 1) then
-          -- Valid only if dfine > 0
-          if v_dfine_ext > to_signed(0, v_dfine_ext'length) then
-            v_win_ok := '1';
-          end if;
-        end if;
-
-        -- Register chosen coarse and debug output
-        d_used_s1        <= d_used_s1c;
-        dcoarse_adjusted <= d_used_s1c; -- Debug output
-
-        -- Capture chosen coarse and fine into pipeline registers for window-check process
-        s_d_used_stage  <= d_used_s1c;
-        s_dfine_u_stage <= fine_s1c;
         -- mark pre-valid; p_win_check will use s_vld_pre to drive s_vld_pipe(0)
-        s_vld_pre       <= '1';
+        s_vld_pre <= '1';
 
         -- Signal to Stage-1e: fresh data available next cycle
         s1d_valid <= '1';
@@ -1345,26 +1068,20 @@ begin
     end if;
   end process;
 
-  -- ========================================================================
   -- Stage-1e: 24-Bit Delta Computation
-  -- ========================================================================
   p_stage1e : process(clk_tdc)
     variable v_delta_meas : signed(C_TIME_FP_BITS - 1 downto 0);
   begin
     if rising_edge(clk_tdc) then
       if s1d_valid = '1' then
-        -- ======================================================================
         -- 24-Bit Delta Computation
-        -- ======================================================================
         v_delta_meas := shift_left(resize(d_used_s1, C_TIME_FP_BITS), C_FINE_FRAC_BITS) + resize(dfine_ext_s1b, C_TIME_FP_BITS);
         s_delta_meas <= v_delta_meas;   -- Register for TDAC subtraction stage
       end if;
     end if;
   end process;
 
-  -- ==============================================================================
-  -- TDAC Subtraction Process
-  -- ==============================================================================
+  -- TDAC Subtraction
   p_tdac_subtract : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -1372,30 +1089,21 @@ begin
     end if;
   end process p_tdac_subtract;
 
-  -- ======================================================================
-  -- Window Check Process (registered) - computes v_win_ok from registered
-  -- chosen coarse/fine values to break long path from adjm_s1 -> s_win_ok
-  -- ======================================================================
+  -- Window Check Process
   p_win_check : process(clk_tdc)
-    variable v_win_ok_local    : std_logic := '0';
-    variable v_dfine_ext_local : signed(C_FINE_FRAC_BITS + 1 downto 0);
+    variable v_win_ok_local : std_logic := '0';
   begin
     if rising_edge(clk_tdc) then
       if reset_tdc = '1' then
-        s_win_ok1        <= '0';
         s_win_ok_pipe(0) <= '0';
         s_vld_pipe(0)    <= '0';
         win_fail_toggle  <= '0';
       else
         -- Default clear
         v_win_ok_local := '0';
-
-        -- Reconstruct v_dfine_ext from registered unsigned fine (kept for reference)
-        v_dfine_ext_local := signed('0' & s_dfine_u_stage);
-        v_win_ok_local    := '1';       -- Always pass (multi-bit mode)
+        v_win_ok_local := '1';          -- Always pass (multi-bit mode)
 
         -- Drive registered outputs; align valid with s_vld_pre (one-cycle delayed)
-        s_win_ok1        <= v_win_ok_local;
         s_win_ok_pipe(0) <= v_win_ok_local;
         s_vld_pipe(0)    <= s_vld_pre;
 
@@ -1407,88 +1115,80 @@ begin
     end if;
   end process p_win_check;
 
-  -- ========================================================================
-  -- Stage II: Error Computation, Centering, and Range Check
-  -- ========================================================================
-  -- This stage computes the centered error signal and validates it's within
-  -- the expected range for ΣΔ operation.
+  -- Stage II: Error Computation and Range Check
   p_interval_stage2 : process(clk_tdc)
     variable v_centered : signed(C_TIME_FP_BITS - 1 downto 0);
     -- synthesis translate_off
     variable v_s2_seen  : integer range 0 to 100000 := 0; -- Warm-up counter for consistency check (saturates at max)
     -- synthesis translate_on
-    constant C_TOL      : integer                   := 8192; -- Tolerance: +-(1/8) coarse period for lock check (simulation only)
   begin
     if rising_edge(clk_tdc) then
-      -- Stage II: Check bit 0 (data from Stage-1b, after TDAC subtraction in same cycle)
-      if s_vld_pipe(0) = '1' then
-        v_centered := s_delta_meas_adj - C_HALF_COARSE_FP;
-        s_centered <= v_centered;
-
-        -- synthesis translate_off
-        if GC_SIM then
-          -- Debug: Report centering details every 100 samples
-          v_s2_seen := v_s2_seen + 1;
-          if (v_s2_seen <= 5) or (v_s2_seen = 100) or (v_s2_seen = 500) or ((v_s2_seen mod 1000) = 0) then
-            report "TDC_QUANTIZER Stage2 [" & integer'image(v_s2_seen) & "]: " & "delta_meas_adj=" & integer'image(to_integer(s_delta_meas_adj)) & " centered=" & integer'image(to_integer(v_centered)) & " (half_coarse=32768)";
-          end if;
-        end if;
-        -- synthesis translate_on
-
-        -- Shift pipeline valids forward one more cycle for Stage III
-        s_vld_pipe(1)    <= '1';
-        s_win_ok_pipe(1) <= s_win_ok_pipe(0);
-        if s_win_ok_pipe(0) = '0' then
-          -- Window check failed -> immediate overflow (don't wait for range check)
-          s_ovf2 <= '1';
-        else
-          -- Window passed, check range on next cycle in Stage III
-          -- For now, clear overflow (Stage III will re-evaluate)
-          s_ovf2 <= '0';
-        end if;
-      else
-        -- No valid data -> clear pipeline bits
+      if reset_tdc = '1' then
         s_vld_pipe(1)    <= '0';
         s_win_ok_pipe(1) <= '0';
+        s_centered       <= (others => '0');
+        -- synthesis translate_off
+        v_s2_seen        := 0;
+      -- synthesis translate_on
+      else
+        -- Stage II: Check bit 0 (data from Stage-1b, after TDAC subtraction in same cycle)
+        if s_vld_pipe(0) = '1' then
+          v_centered := s_delta_meas_adj - C_HALF_COARSE_FP;
+          s_centered <= v_centered;
+
+          -- synthesis translate_off
+          if GC_SIM then
+            -- Debug: Report centering details rarely for speed
+            v_s2_seen := v_s2_seen + 1;
+            if (v_s2_seen <= 3) or ((v_s2_seen mod 5000) = 0) then
+              report "TDC_QUANTIZER Stage2 [" & integer'image(v_s2_seen) & "]: " & "delta_meas_adj=" & integer'image(to_integer(s_delta_meas_adj)) & " centered=" & integer'image(to_integer(v_centered)) & " (half_coarse=32768)";
+            end if;
+          end if;
+          -- synthesis translate_on
+
+          -- Shift pipeline valids forward one more cycle for Stage III
+          s_vld_pipe(1)    <= '1';
+          s_win_ok_pipe(1) <= s_win_ok_pipe(0);
+        else
+          -- No valid data -> clear pipeline bits
+          s_vld_pipe(1)    <= '0';
+          s_win_ok_pipe(1) <= '0';
+        end if;
       end if;
     end if;
   end process;
 
-  -- ========================================================================
-  -- Stage III: Overflow Check, Rounding, Resize, Polarity, and Buffer Update
-  -- Split into sub-stages for timing closure at 400MHz (2.5ns period)
-  -- ========================================================================
+  -- Stage III: Overflow Check, Rounding, and Output
   p_interval_stage3 : process(clk_tdc)
-    constant C_ROUND_BIT   : integer := C_TIME_FP_BITS - GC_OUTPUT_WIDTH - 1;
+    constant C_ROUND_BIT   : integer                             := C_TIME_FP_BITS - GC_OUTPUT_WIDTH - 1;
     constant C_ROUND_CONST : signed(C_TIME_FP_BITS - 1 downto 0) := to_signed(2 ** C_ROUND_BIT, C_TIME_FP_BITS);
-    -- HARDWARE DEBUG: Increase tolerance to ±100 coarse cycles (was ±20)
-    constant C_OVF_TOL     : integer := 100 * (2 ** C_FINE_FRAC_BITS); -- 6553600: ±100 coarse cycles for debugging
+    constant C_OVF_TOL     : integer                             := 100 * (2 ** C_FINE_FRAC_BITS);
     variable v_ovf_check   : boolean;
   begin
     if rising_edge(clk_tdc) then
       if reset_tdc = '1' then
         -- Reset ONLY sticky control flags
-        lost_sample_latch      <= '0';
-        tdac_enable_after_lock <= '0';
-        overflow_buf           <= '0';
-        sample_ready           <= '0';
-        tdc_valid_i            <= '0';
-        tdc_result_buf         <= (others => '0');
-        overflow_i             <= '0';
-        tdc_result             <= (others => '0');
-        s_round_sum            <= (others => '0');
-        s_shifted              <= (others => '0');
-        s_rounded              <= (others => '0');
-        s_ovf_a                <= '0';
-        s_ovf_b                <= '0';
-        s_ovf_pipe             <= '0';
+        lost_sample_latch <= '0';
+        overflow_buf      <= '0';
+        sample_ready      <= '0';
+        tdc_valid_i       <= '0';
+        tdc_result_buf    <= (others => '0');
+        overflow_i        <= '0';
+        tdc_result        <= (others => '0');
+        s_round_sum       <= (others => '0');
+        s_shifted         <= (others => '0');
+        s_rounded         <= (others => '0');
+        s_ovf_a           <= '0';
+        s_ovf_b           <= '0';
+        s_ovf_pipe        <= '0';
+        s_vld_pipe(2)     <= '0';
+        s_vld_pipe(3)     <= '0';
+        s_vld_pipe(4)     <= '0';
       else
         -- Default: no new output (unless start_pulse triggers delivery)
         tdc_valid_i <= '0';
 
-        -- ================================================================
-        -- Stage III-A: Overflow check + Rounding addition (cycle 1)
-        -- ================================================================
+        -- Stage III-A: Overflow check + Rounding
         if s_vld_pipe(1) = '1' then
           -- Overflow check: compare magnitude against tolerance
           v_ovf_check := (s_win_ok_pipe(1) = '0') or (s_centered > C_OVF_TOL) or (s_centered < -C_OVF_TOL);
@@ -1506,22 +1206,18 @@ begin
           s_vld_pipe(2) <= '0';
         end if;
 
-        -- ================================================================
-        -- Stage III-B: Right-shift and resize (cycle 2)
-        -- ================================================================
+        -- Stage III-B: Right-shift and resize
         if s_vld_pipe(2) = '1' then
-          s_ovf_b   <= s_ovf_a;
-          s_shifted <= resize(shift_right(s_round_sum, C_TIME_FP_BITS - GC_OUTPUT_WIDTH), GC_OUTPUT_WIDTH);
+          s_ovf_b       <= s_ovf_a;
+          s_shifted     <= resize(shift_right(s_round_sum, C_TIME_FP_BITS - GC_OUTPUT_WIDTH), GC_OUTPUT_WIDTH);
           s_vld_pipe(3) <= '1';
         else
           s_vld_pipe(3) <= '0';
         end if;
 
-        -- ================================================================
-        -- Stage III-C: Polarity inversion (cycle 3)
-        -- ================================================================
+        -- Stage III-C: Polarity inversion
         if s_vld_pipe(3) = '1' then
-          s_ovf_pipe <= s_ovf_b;
+          s_ovf_pipe    <= s_ovf_b;
           if invert_polarity = '1' then
             s_rounded <= -s_shifted;
           else
@@ -1532,9 +1228,7 @@ begin
           s_vld_pipe(4) <= '0';
         end if;
 
-        -- ================================================================
-        -- Stage III-D: Buffer update (cycle 4)
-        -- ================================================================
+        -- Stage III-D: Buffer update
         if s_vld_pipe(4) = '1' then
           if s_ovf_pipe = '1' then
             -- Overflow: don't deliver sample
@@ -1555,11 +1249,10 @@ begin
         if start_pulse = '1' then
           if sample_ready = '1' then
             -- Deliver buffered sample
-            tdc_result             <= tdc_result_buf;
-            overflow_i             <= overflow_buf;
-            tdc_valid_i            <= '1';
-            sample_ready           <= '0';
-            tdac_enable_after_lock <= '0';
+            tdc_result   <= tdc_result_buf;
+            overflow_i   <= overflow_buf;
+            tdc_valid_i  <= '1';
+            sample_ready <= '0';
           else
             -- No sample ready this start: normal pipeline timing
             tdc_valid_i <= '0';
@@ -1574,25 +1267,10 @@ begin
   overflow    <= overflow_i;
   lost_sample <= lost_sample_latch;
 
-  -- ========================================================================
   -- TDL Centering Calibration Outputs
-  -- ========================================================================
-  -- Expose fine_at_comp (captured fine_avg_fp at comparator edge) for TDL centering calibration
   fine_at_comp_out <= fine_at_comp;
-  fine_valid_out   <= s1a_valid;  -- Pulses when fine_at_comp is updated (same as Stage-1a valid)
+  fine_valid_out   <= s1a_valid;
 
-  -- ========================================================================
-  -- Window Failure CDC (clk_tdc -> clk_sys)
-  -- ========================================================================
-  -- 3-FF synchronizer for toggle-based handshake
-  p_win_fail_cdc : process(clk_sys)
-  begin
-    if rising_edge(clk_sys) then
-      -- 3-FF scalar synchronizer chain
-      win_fail_toggle_sync0 <= win_fail_toggle;
-      win_fail_toggle_sync1 <= win_fail_toggle_sync0;
-      win_fail_toggle_sync2 <= win_fail_toggle_sync1;
-    end if;
-  end process;
+  -- Note: Window failure CDC process removed (win_fail_toggle is driven but not observed)
 
 end architecture;

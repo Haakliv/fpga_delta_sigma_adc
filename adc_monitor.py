@@ -72,23 +72,20 @@ def decode_sample(line: str) -> Optional[int]:
 def sample_to_voltage(sample: int) -> float:
     """Convert a signed ADC sample into a voltage.
     
-    Simple linear calibration: V = m × count + b
-    USER: Adjust these constants based on your measurements!
+    The FPGA outputs mv_code which is already in millivolts (0-1300mV range).
+    We just need to convert mV to V by dividing by 1000.
+    
+    Note: sample is a signed 16-bit value, but mv_code is unsigned 0-1300.
+    If sample appears negative, it's because the unsigned value > 32767.
     """
-    # Two-point calibration (USER TO UPDATE):
-    # Point 1: (count1, voltage1)
-    # Point 2: (count2, voltage2)
+    # mv_code is output as unsigned 0-1300
+    # But sample_to_voltage receives it as signed
+    # Values > 32767 wrap to negative - shouldn't happen for mv_code (max 1300)
     
-    # Example using your data (NEEDS UPDATING for new firmware):
-    #   110mV @ ??? counts (new firmware)
-    #   600mV @ ??? counts (new firmware)
+    # Direct mV to V conversion
+    voltage_v = sample / 1000.0
     
-    # Temporary placeholder - just show raw counts scaled
-    # 1 count ≈ some millivolts
-    COUNTS_PER_VOLT = 10000  # Placeholder - adjust based on measurements
-    OFFSET_VOLTS = 0.0      # Placeholder
-    
-    return (sample / COUNTS_PER_VOLT) + OFFSET_VOLTS
+    return voltage_v
 
 
 def send_mmio_write(ser: serial.Serial, addr: int, value: int) -> None:
@@ -112,8 +109,8 @@ def main() -> None:
     try:
         with serial.Serial(port, 115200, timeout=1) as ser:
             print("Connected! Waiting for hex samples from FPGA...")
-            print(f"ADC configuration: {ADC_BITS}-bit signed output")
-            print("NOTE: Voltage calibration needs updating - showing raw counts/10000")
+            print(f"ADC configuration: {ADC_BITS}-bit output")
+            print("Output format: mv_code (0-1300mV) → Voltage in V")
             print("-" * 60)
 
             sample_count = 0

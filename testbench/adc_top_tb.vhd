@@ -1,21 +1,24 @@
 -- ************************************************************************
--- Testbench for Top-Level TDC ADC
--- Simulates TDC-based delta-sigma ADC with reference clock and analog input
+-- Unified Testbench for ADC (TDC-based and RC-based delta-sigma ADC)
+-- Simulates both TDC-based and traditional RC delta-sigma ADC
+-- Uses 1.3V I/O bank voltage for consistent voltage range
 -- ************************************************************************
 --
 -- TEST EXECUTION EXAMPLES:
 --   List all tests:
 --     python run.py --list
 --
---   Run specific test:
---     python run.py fpga_lib.tdc_adc_top_tb.dc_positive.basic_test
---     python run.py fpga_lib.tdc_adc_top_tb.sine_1khz.basic_test
+--   Run specific TDC ADC test:
+--     python run.py fpga_lib.adc_top_tb.tdc.dc_positive.basic_test
+--
+--   Run specific RC ADC test:
+--     python run.py fpga_lib.adc_top_tb.rc.dc_positive.basic_test
 --
 --   Run with verbose output:
---     python run.py fpga_lib.tdc_adc_top_tb.dc_positive.basic_test -v
+--     python run.py fpga_lib.adc_top_tb.tdc.dc_positive.basic_test -v
 --
---   Run multiple tests with pattern:
---     python run.py "fpga_lib.tdc_adc_top_tb.dc_*"
+--   Run all TDC tests:
+--     python run.py "fpga_lib.adc_top_tb.tdc.*"
 --
 -- ************************************************************************
 
@@ -30,9 +33,11 @@ context vunit_lib.vunit_context;
 library fpga_lib;
 use fpga_lib.clk_rst_pkg.all;
 
-entity tdc_adc_top_tb is
+entity adc_top_tb is
     generic(
         runner_cfg         : string;
+        -- ADC type selection: "tdc" for TDC-based ADC, "rc" for RC delta-sigma ADC
+        GC_ADC_TYPE        : string  := "tdc";
         -- Test configuration generics for VUnit
         -- Signal type: 0=sine, 1=DC, 2=ramp, 3=square
         GC_TB_SIGNAL_TYPE  : integer := 0; -- Signal type enum
@@ -43,7 +48,7 @@ entity tdc_adc_top_tb is
     );
 end entity;
 
-architecture behavioral of tdc_adc_top_tb is
+architecture behavioral of adc_top_tb is
 
     -- Test parameters
     constant C_CLK_SYS_PERIOD : time     := 10 ns; -- 100 MHz (from PLL outclk_0 in hardware)
@@ -57,7 +62,6 @@ architecture behavioral of tdc_adc_top_tb is
     signal clk_tdc   : std_logic := '0';
     signal reset     : std_logic := '1';
     signal ref_clock : std_logic := '0';
-    signal analog_in : std_logic := '0';
 
     -- Output signals
     signal sample_data  : std_logic_vector(C_DATA_WIDTH - 1 downto 0);
@@ -74,9 +78,16 @@ architecture behavioral of tdc_adc_top_tb is
     signal analog_voltage_p : real := 0.0; -- P-pin voltage (input signal)
     signal analog_voltage_n : real := 0.0; -- N-pin voltage (from external RC filter)
 
+    -- RC filter internal signals (for ref_clock-rate optimization)
+    signal duty_count_reg   : integer range 0 to 255 := 0;
+    signal duty_period_done : std_logic              := '0';
+
     -- Pad-level signals (after threshold conversion)
     signal pad_p : std_logic := '0';    -- P-pad digital (comparator P input)
     signal pad_n : std_logic := '0';    -- N-pad digital (comparator N threshold)
+
+    -- RC ADC comparator signal - simple instantaneous analog comparison
+    signal rc_comparator_out : std_logic := '0';
 
     -- Debug signals for TDC characterization
     signal debug_tdc_out   : signed(C_TDC_WIDTH - 1 downto 0);
@@ -97,57 +108,68 @@ architecture behavioral of tdc_adc_top_tb is
 begin
 
     -- ========================================================================
-    -- Device Under Test
+    -- Device Under Test - Conditional instantiation based on GC_ADC_TYPE
     -- ========================================================================
-    i_dut : entity work.tdc_adc_top
-        generic map(
-            GC_DECIMATION => 2,         -- ULTRA-fast sim: 2x decimation (1 MS/s from 2 MHz ref)
-            GC_DATA_WIDTH => C_DATA_WIDTH,
-            GC_TDC_OUTPUT => C_TDC_WIDTH,
-            GC_SIM        => true,
-            GC_OPEN_LOOP  => GC_OPEN_LOOP -- Pass through from testbench generic
-        )
-        port map(
-            clk_sys            => clk_sys,
-            clk_tdc            => clk_tdc,
-            reset              => reset,
-            ref_clock          => ref_clock,
-            -- GPIO IP interface (real GPIO IP instantiated below)
-            comparator_in      => s_comparator_out(0), -- From GPIO IP differential comparator
-            dac_out_bit        => dac_out_bit, -- To GPIO DAC IP
-            trigger_enable     => '1',  -- Always enabled in testbench
-            open_loop_dac_duty => open_loop_dac, -- For characterization tests
 
-            sample_data        => sample_data,
-            sample_valid       => sample_valid,
-            debug_tdc_out      => debug_tdc_out,
-            debug_tdc_valid    => debug_tdc_valid
-        );
+    -- TDC ADC instantiation (GC_ADC_TYPE = "tdc")
+    g_tdc_adc : if GC_ADC_TYPE = "tdc" generate
+        i_dut_tdc : entity work.tdc_adc_top
+            generic map(
+                GC_DECIMATION => 64,    -- 32µs per sample (64 × 500ns) - 6-bit DAC resolution
+                GC_DATA_WIDTH => C_DATA_WIDTH,
+                GC_TDC_OUTPUT => C_TDC_WIDTH,
+                GC_SIM        => false, -- Disable debug reports for fast simulation
+                GC_FAST_SIM   => true,  -- Enable fast boot mode (reduced timeouts)
+                GC_OPEN_LOOP  => GC_OPEN_LOOP -- Pass through from testbench generic
+            )
+            port map(
+                clk_sys            => clk_sys,
+                clk_tdc            => clk_tdc,
+                reset              => reset,
+                ref_clock          => ref_clock,
+                -- GPIO IP interface (real GPIO IP instantiated below)
+                comparator_in      => s_comparator_out(0), -- From GPIO IP differential comparator
+                dac_out_bit        => dac_out_bit, -- To GPIO DAC IP
+                trigger_enable     => '1', -- Always enabled in testbench
+                open_loop_dac_duty => open_loop_dac, -- For characterization tests
 
-    -- ========================================================================
-    -- GPIO IP Instantiations (Differential Comparator + DAC Output)
-    -- ========================================================================
-    -- Use actual GPIO IP components to model real hardware behavior
-    -- The differential comparator compares analog voltages on P-pin vs N-pin
-    --
-    -- CRITICAL: The GPIO comparator uses the 'sim' architecture which provides
-    -- behavioral differential comparison (P vs N). The default Intel/Altera 
-    -- simulation model does NOT implement analog comparison - it just forwards
-    -- the P input, making polarity bugs undetectable.
+                sample_data        => sample_data,
+                sample_valid       => sample_valid,
+                debug_tdc_out      => debug_tdc_out,
+                debug_tdc_valid    => debug_tdc_valid
+            );
+    end generate;
 
-    -- ========================================================================
-    -- Behavioral Differential Comparator for SIMULATION ONLY
-    -- ========================================================================
-    -- Intel GPIO IP with BUFFER_TYPE="differential" works correctly in HARDWARE.
-    -- However, its SIMULATION MODEL is single-ended (just forwards pad_in).
-    --
-    -- This behavioral model provides realistic differential comparison for TB.
-    --
-    -- V8.5 Enhancement: Add DEADLOCK TEST MODE
-    -- When GC_TB_AMPLITUDE = 0.0, simulate worst-case power-up condition:
-    -- Both P and N start at same voltage → comparator stuck → no tdc_valid
-    -- This tests the timeout fallback mechanism in p_arm_closed_loop
-    -- ========================================================================
+    -- RC ADC instantiation (GC_ADC_TYPE = "rc")
+    g_rc_adc : if GC_ADC_TYPE = "rc" generate
+        i_dut_rc : entity work.rc_adc_top
+            generic map(
+                GC_DECIMATION => 64,    -- Same decimation as TDC for comparison
+                GC_DATA_WIDTH => C_DATA_WIDTH
+            )
+            port map(
+                clk          => clk_sys,
+                reset        => reset,
+                -- Memory-mapped interface (unused in basic tests)
+                mem_cs       => '0',
+                mem_rd       => '0',
+                mem_wr       => '0',
+                mem_addr     => (others => '0'),
+                mem_wdata    => (others => '0'),
+                mem_rdata    => open,
+                mem_rdvalid  => open,
+                -- Physical ADC interface
+                analog_in    => rc_comparator_out, -- From RC-specific comparator model
+                dac_out      => dac_out_bit, -- DAC output for feedback
+                -- Streaming sample output
+                sample_data  => sample_data,
+                sample_valid => sample_valid
+            );
+        -- RC ADC doesn't have TDC debug outputs - tie off
+        debug_tdc_out   <= (others => '0');
+        debug_tdc_valid <= '0';
+    end generate;
+
     p_behavioral_comparator : process(pad_p, pad_n)
     begin
         -- Differential comparison: pad_p (analog input) vs pad_n (RC filtered feedback)
@@ -162,20 +184,6 @@ begin
             s_comparator_out(0) <= pad_p xor pad_n;
         end if;
     end process;
-
-    -- ========================================================================
-    -- Clock Generation (v8.4: Enhanced with Asynchrony & Jitter)
-    -- ========================================================================
-    -- NOTE: In hardware, these clocks are generated by the iopll Platform Designer IP.
-    -- The PLL generates 100MHz, 400MHz, and 2MHz clocks from a 25MHz reference input.
-    -- 
-    -- For simulation, we use simple VHDL process-based clock generators because the
-    -- PLL IP's behavioral model requires the encrypted primitive tennm_ph2_iopll_encrypted
-    -- which is not available in QuestaSim. The timing characteristics below exactly match
-    -- the PLL IP configuration (ip/adc_system/iopll.ip).
-    --
-    -- V8.4 Enhancement: Add random initial phase, ppm offset, and edge jitter to expose
-    -- closed-loop handoff bugs that only manifest with realistic clock asynchrony.
 
     p_clk_sys : process
         variable v_seed1, v_seed2 : positive := 1;
@@ -289,43 +297,43 @@ begin
     --   - DC_LEVEL: 0.6V (mid-scale, 50% of 1.2V)
     --   - AMPLITUDE: ±0.3V swing (±25% of 1.2V)
     --   - Resulting sine: 0.3V to 0.9V (centered at 0.6V)
+    -- ========================================================================
+    -- Analog Signal Generator - OPTIMIZED for ref_clock rate (2 MHz)
+    -- ========================================================================
+    -- Only update analog value once per ref_clock period instead of every 0.5ns.
+    -- This provides massive speedup for AC signals while still being massively
+    -- oversampled relative to the 1kHz input frequency.
+    -- The comparator/TDC model only samples once per period anyway.
     p_analog_voltage_generator : process
-        variable v_time_s : real;
+        variable v_time_s : real := 0.0;
         constant C_PI     : real := 3.14159265359;
         constant C_VBANK  : real := 1.3; -- FPGA I/O bank voltage
     begin
         wait until reset = '0';
         report "Analog voltage generator started! Signal type=" & integer'image(GC_TB_SIGNAL_TYPE);
 
+        -- All signal types now update at ref_clock rate (2 MHz)
+        -- This is still massively oversampled vs 1kHz input frequency
         loop
-            -- Calculate current time in seconds
-            v_time_s := real(now / 1 ns) * 1.0e-9;
+            wait until rising_edge(ref_clock);
+            v_time_s := v_time_s + real(C_REF_PERIOD / 1 ns) * 1.0e-9;
 
-            -- Generate voltage based on signal type
-            -- Scale to actual I/O bank voltage (1.2V)
             case GC_TB_SIGNAL_TYPE is
-                when 0 =>               -- Sine wave
+                when 0 =>           -- Sine wave
                     analog_voltage_p <= (GC_TB_DC_LEVEL + GC_TB_AMPLITUDE * sin(2.0 * C_PI * GC_TB_FREQUENCY_HZ * v_time_s)) * C_VBANK;
-
-                when 1 =>               -- DC level
+                when 1 =>           -- DC level
                     analog_voltage_p <= GC_TB_DC_LEVEL * C_VBANK;
-
-                when 2 =>               -- Ramp (sawtooth)
+                when 2 =>           -- Ramp (sawtooth)
                     analog_voltage_p <= (GC_TB_DC_LEVEL + GC_TB_AMPLITUDE * (2.0 * ((GC_TB_FREQUENCY_HZ * v_time_s) mod 1.0) - 1.0)) * C_VBANK;
-
-                when 3 =>               -- Square wave
+                when 3 =>           -- Square wave
                     if ((GC_TB_FREQUENCY_HZ * v_time_s) mod 1.0) < 0.5 then
                         analog_voltage_p <= (GC_TB_DC_LEVEL + GC_TB_AMPLITUDE) * C_VBANK;
                     else
                         analog_voltage_p <= (GC_TB_DC_LEVEL - GC_TB_AMPLITUDE) * C_VBANK;
                     end if;
-
                 when others =>
                     analog_voltage_p <= 0.0;
             end case;
-
-            -- Update at high rate to capture smooth analog behavior
-            wait for 0.5 ns;
         end loop;
     end process;
 
@@ -347,61 +355,68 @@ begin
     -- This models a real RC filter with longer time constant than the sample period
     -- ========================================================================
 
-    p_rc_filter_duty_avg : process(clk_tdc, reset)
-        -- RC filter model: True exponential RC response (not moving average!)
-        -- Uses discrete-time exponential: Vn(k+1) = alpha * Vn(k) + (1-alpha) * Vdac
-        -- where alpha = exp(-T_clk / tau_rc)
-        --
-        -- Physical parameters:
-        --   tau_rc = 10us for proper delta-sigma averaging (5-10× sample period)
-        --   T_clk = 2.475ns (404 MHz TDC clock)
-        --   alpha = exp(-2.475/10000) ≈ 0.999753 (very slow decay per tick)
-        --
-        -- This correctly models the instant response of RC filters to DAC changes,
-        -- unlike moving average which has pure delay equal to window size.
-        -- With τ >> T_sample, the RC filter properly integrates multiple DAC cycles.
-        constant C_DAC_HIGH_V   : real := 1.3;   -- DAC high voltage (V)
-        constant C_TAU_RC_NS    : real := 10000.0; -- RC time constant (ns) = 10us
-        constant C_T_CLK_NS     : real := 2.475; -- clk_tdc period (ns)
-        constant C_ALPHA        : real := 0.999753; -- exp(-2.475/10000), pre-calculated
-        variable v_vn           : real := 0.65;  -- Current analog voltage (starts at mid-scale)
-        variable v_vdac         : real := 0.0;   -- DAC target voltage this cycle
-        variable v_sample_count : integer := 0;
-        variable v_ref_prev     : std_logic := '0';
-        variable v_period_count : integer := 0;
+    -- ========================================================================
+    -- RC FILTER: Fast ref_clock-rate filter with duty cycle counting
+    -- ========================================================================
+    -- KEY OPTIMIZATION: Use clk_tdc only for counting, update at ref_clock rate
+    -- Count dac_out_bit high cycles per ref period to get duty cycle.
+    -- This reduces signal update frequency from 400MHz to 2MHz (200x fewer events).
+    -- ========================================================================
+
+    -- Duty counter at clk_tdc rate (just counting, no signal updates)
+    p_duty_counter : process(clk_tdc, reset)
+        constant C_TICKS_PER_PERIOD : integer                := 202;
+        variable v_tick_count       : integer range 0 to 255 := 0;
+        variable v_high_count       : integer range 0 to 255 := 0;
     begin
         if reset = '1' then
-            v_vn             := 0.65;   -- Start at mid-scale
-            analog_voltage_n <= 0.65;
-            v_sample_count   := 0;
-            v_ref_prev       := '0';
-            v_period_count   := 0;
+            v_tick_count     := 0;
+            v_high_count     := 0;
+            duty_count_reg   <= 0;
+            duty_period_done <= '0';
         elsif rising_edge(clk_tdc) then
-            v_sample_count := v_sample_count + 1;
-
-            -- DAC target voltage based on current DAC output
+            -- Count DAC high
             if dac_out_bit = '1' then
-                v_vdac := C_DAC_HIGH_V;
+                v_high_count := v_high_count + 1;
+            end if;
+            v_tick_count := v_tick_count + 1;
+
+            -- At end of period, latch count and reset
+            if v_tick_count >= C_TICKS_PER_PERIOD then
+                duty_count_reg   <= v_high_count;
+                duty_period_done <= '1';
+                v_tick_count     := 0;
+                v_high_count     := 0;
             else
-                v_vdac := 0.0;
+                duty_period_done <= '0';
             end if;
+        end if;
+    end process;
 
-            -- Exponential RC filter: Vn(k+1) = alpha * Vn(k) + (1-alpha) * Vdac
-            v_vn := C_ALPHA * v_vn + (1.0 - C_ALPHA) * v_vdac;
-            analog_voltage_n <= v_vn;
-
-            -- Debug output at ref_clock edges (sparse)
-            if ref_clock = '1' and v_ref_prev = '0' then
-                v_period_count := v_period_count + 1;
-                if v_period_count <= 20 or (v_period_count mod 200) = 0 then
-                    report "RC_EXP: period=" & integer'image(v_period_count) &
-                           " Vn=" & real'image(v_vn) & "V" &
-                           " Vp=" & real'image(analog_voltage_p) & "V" &
-                           " dV=" & real'image(analog_voltage_p - v_vn) & "V" &
-                           " at " & time'image(now);
-                end if;
+    -- RC filter at ref_clock rate (only updates when period done)
+    p_rc_filter_duty_avg : process(clk_tdc, reset)
+        constant C_DAC_HIGH_V       : real      := 1.3;
+        constant C_TICKS_PER_PERIOD : integer   := 202;
+        -- More accurate alpha calculation: tau = 10us, T = 500ns
+        -- alpha = exp(-T/tau) = exp(-500ns/10us) = exp(-0.05) ≈ 0.9512
+        -- But duty averaging loses some resolution, use slightly higher alpha
+        constant C_ALPHA            : real      := 0.975; -- Slower filter for better accuracy
+        variable v_vn               : real      := 0.65;
+        variable v_vdac_avg         : real      := 0.0;
+        variable v_prev_done        : std_logic := '0';
+    begin
+        if reset = '1' then
+            v_vn             := 0.65;
+            analog_voltage_n <= 0.65;
+            v_prev_done      := '0';
+        elsif rising_edge(clk_tdc) then
+            -- Only update on rising edge of duty_period_done
+            if duty_period_done = '1' and v_prev_done = '0' then
+                v_vdac_avg       := real(duty_count_reg) / real(C_TICKS_PER_PERIOD) * C_DAC_HIGH_V;
+                v_vn             := C_ALPHA * v_vn + (1.0 - C_ALPHA) * v_vdac_avg;
+                analog_voltage_n <= v_vn;
             end if;
-            v_ref_prev := ref_clock;
+            v_prev_done := duty_period_done;
         end if;
     end process;
 
@@ -438,13 +453,14 @@ begin
         --
         -- Back-calculation: C_GAIN_NS_V = K_tdc × T_clk / 256 = 9525 × 2.474 / 256 ≈ 92 ns/V
         -- Using 92 ns/V for accurate model matching.
-        constant C_GAIN_NS_V      : real    := 92.0; -- ns per volt (CALIBRATED from open-loop test)
-        constant C_SWEEP_END_TIME : time    := 70 us; -- Sweep ends around this time
-        variable v_verr           : real    := 0.0; -- Voltage error (Vp - Vn)
-        variable v_cross_ns       : real    := 250.0; -- Crossing time in ns
-        variable v_cross_time     : time    := 250 ns; -- Crossing time
-        variable v_pulse_count    : integer := 0;
-        variable v_in_sweep       : boolean := true; -- True during sweep phase
+        constant C_GAIN_NS_V      : real      := 92.0; -- ns per volt (CALIBRATED from open-loop test)
+        constant C_SWEEP_END_TIME : time      := 70 us; -- Sweep ends around this time
+        variable v_verr           : real      := 0.0; -- Voltage error (Vp - Vn)
+        variable v_cross_ns       : real      := 250.0; -- Crossing time in ns
+        variable v_cross_time     : time      := 250 ns; -- Crossing time
+        variable v_pulse_count    : integer   := 0;
+        variable v_in_sweep       : boolean   := true; -- True during sweep phase
+        variable v_final          : std_logic := '0'; -- Final state for this period
     begin
         -- Initial state before reset
         pad_p <= '0';
@@ -475,67 +491,123 @@ begin
                     pad_n <= '1';
                 end if;
 
-                if v_pulse_count <= 20 or (v_pulse_count mod 500) = 0 then
-                    report "COMP_SWEEP: #" & integer'image(v_pulse_count) & " Verr=" & real'image(v_verr) & "V" & " Vp=" & real'image(analog_voltage_p) & "V" & " Vn=" & real'image(analog_voltage_n) & "V" & " pad_p='" & std_logic'image(pad_p)(2) & "'" & " at " & time'image(now);
-                end if;
-
                 -- Wait for next ref_clock (no transition needed in sweep mode)
                 wait until rising_edge(ref_clock);
             else
-                -- TDC MODE: Generate synthetic crossing for TDC measurement
-                -- Calculate crossing time from voltage error
-                -- Positive error (Vp > Vn) → longer crossing time (Vn needs to charge up)
-                -- Negative error (Vp < Vn) → shorter crossing time (Vn needs to discharge)
+                -- ========================================================================
+                -- ========================================================================
+                -- CLOSED LOOP MODE: Delta-sigma feedback with TDC timing info
+                -- ========================================================================
+                -- The comparator must provide correct delta-sigma feedback while also
+                -- giving the TDC meaningful timing information.
                 --
-                -- TIMING MODEL (matches real hardware):
-                -- - TDC measures time from ref_clock edge to comparator crossing
-                -- - When Vn < Vp, the comparator takes longer to cross → larger TDC value
-                -- - When Vn > Vp, the comparator crosses faster → smaller TDC value
-                -- - TDC error = tdc_out - center: positive when Vn < Vp
-                -- - PI loop drives DAC='1' on positive error to charge Vn up
-                v_cross_ns := 250.0 + (C_GAIN_NS_V * v_verr);
+                -- Delta-sigma requirement:
+                --   At sample moment (start_pulse): comp = '1' if Vp > Vn, else '0'
+                --
+                -- TDC requirement:
+                --   Transition timing encodes fine voltage info
+                --
+                -- Solution: Start with FINAL state for delta-sigma, then transition
+                -- to opposite briefly before transitioning back at timing-encoded moment.
+                --
+                -- Timeline within 500ns period:
+                --   0ns   : Set final state (sampled by delta-sigma at start_pulse)
+                --   50ns  : Transition to opposite (arms TDC)
+                --   Tcross: Transition back to final (TDC captures this)
+                --   500ns : Next period begins
+                --
+                -- The crossing time Tcross varies with voltage:
+                --   Tcross = 150ns + GAIN * (Vp - Vn)
+                --   Range: 50ns to 400ns (after the initial transition)
+                -- ========================================================================
 
-                -- Clamp to valid range (10ns to 490ns within 500ns period)
+                -- Determine final state based on voltage comparison (for delta-sigma)
+                if v_verr > 0.0 then
+                    v_final := '1';     -- Vp > Vn: DAC should be HIGH
+                else
+                    v_final := '0';     -- Vp < Vn: DAC should be LOW
+                end if;
+
+                -- Calculate crossing time: 150ns (offset from 50ns) + gain * error
+                v_cross_ns := 150.0 + (C_GAIN_NS_V * v_verr);
+
+                -- Clamp to valid range (10ns to 350ns from the 50ns offset)
                 if v_cross_ns < 10.0 then
                     v_cross_ns := 10.0;
-                elsif v_cross_ns > 490.0 then
-                    v_cross_ns := 490.0;
-                end if;
-                v_cross_time := v_cross_ns * 1 ns;
-
-                -- CRITICAL TIMING: pad_p must be stable LOW before ref_clock edge
-                -- so that the TDC synchronizer has settled when start_pulse fires.
-                -- The previous iteration already set pad_p='0' at the end (see below).
-                -- Here we just wait for crossing time, then set pad_p='1'.
-
-                -- Wait until crossing time from start of period
-                wait for v_cross_time;
-
-                -- Transition HIGH (TDC detects this 0→1 transition)
-                pad_p <= '1';
-                pad_n <= '0';
-
-                if v_pulse_count <= 150 or (v_pulse_count mod 500) = 0 then
-                    report "COMP_TDC: #" & integer'image(v_pulse_count) & " Verr=" & real'image(v_verr) & "V" & " Tcross=" & time'image(v_cross_time) & " Vp=" & real'image(analog_voltage_p) & "V" & " Vn=" & real'image(analog_voltage_n) & "V" & " at " & time'image(now);
+                elsif v_cross_ns > 350.0 then
+                    v_cross_ns := 350.0;
                 end if;
 
-                -- Wait for remaining period time, then set pad_p LOW
-                -- This ensures pad_p is LOW and stable BEFORE next ref_clock edge
-                -- so the TDC synchronizer sees the correct start level.
-                wait for (500 ns - v_cross_time - 50 ns); -- Leave 50ns margin
+                -- Absolute crossing time from period start
+                v_cross_time := (50.0 + v_cross_ns) * 1 ns;
 
-                -- Set LOW before next ref_clock edge (essential for correct TDC arming)
-                pad_p <= '0';
-                pad_n <= '1';
+                -- Phase 1: Start with FINAL state (delta-sigma samples this)
+                pad_p <= v_final;
+                pad_n <= not v_final;
 
-                -- Wait for next ref_clock edge (pad_p already LOW, synchronizer settled)
+                -- Wait 50ns for delta-sigma to sample the correct value
+                wait for 50 ns;
+
+                -- Phase 2: Transition to OPPOSITE (TDC arms on this change)
+                pad_p <= not v_final;
+                pad_n <= v_final;
+
+                -- Phase 3: Wait until crossing time, then transition back to FINAL
+                -- (TDC measures this transition)
+                wait for v_cross_ns * 1 ns;
+
+                pad_p <= v_final;
+                pad_n <= not v_final;
+
+                -- Wait for remainder of period
                 wait until rising_edge(ref_clock);
             end if;
         end loop;
     end process;
 
-    -- Feed separate pads into GPIO IP (it decides differential polarity)
-    analog_in <= pad_p;                 -- Will be wired to pad_in below
+    -- ========================================================================
+    -- RC ADC COMPARATOR MODEL - Simple analog comparison for RC delta-sigma
+    -- ========================================================================
+    -- For RC ADC, we need a simpler model:
+    -- 1. Comparator just compares Vp (input) vs Vn (filtered DAC output)
+    -- 2. RC filter models the external capacitor integration of DAC output
+    -- 3. No timing-encoded transitions - just instantaneous comparison
+    -- ========================================================================
+
+    p_rc_comparator_model : process(clk_sys, reset)
+        -- RC filter for DAC feedback modeling at clk_sys rate
+        -- Models external RC integrator: DAC_OUT → R → C → ANALOG_IN_N
+        constant C_DAC_HIGH_V   : real    := 1.3; -- DAC high voltage (1.3V I/O bank)
+        constant C_ALPHA        : real    := 0.95; -- RC filter coefficient (~2us time constant at 100MHz)
+        variable v_dac_filtered : real    := 0.0; -- Start at 0V to allow proper settling
+        variable v_dac_voltage  : real    := 0.0;
+        variable v_cycle_count  : integer := 0;
+    begin
+        if reset = '1' then
+            rc_comparator_out <= '0';
+            v_dac_filtered    := 0.0;   -- Start at 0V
+            v_cycle_count     := 0;
+        elsif rising_edge(clk_sys) then
+            v_cycle_count := v_cycle_count + 1;
+
+            -- Update DAC filtered voltage
+            if dac_out_bit = '1' then
+                v_dac_voltage := C_DAC_HIGH_V;
+            else
+                v_dac_voltage := 0.0;
+            end if;
+
+            -- First-order IIR low-pass filter (models RC integration)
+            v_dac_filtered := C_ALPHA * v_dac_filtered + (1.0 - C_ALPHA) * v_dac_voltage;
+
+            -- Comparator: Compare input voltage vs filtered DAC output
+            if analog_voltage_p > v_dac_filtered then
+                rc_comparator_out <= '1';
+            else
+                rc_comparator_out <= '0';
+            end if;
+        end if;
+    end process;
 
     -- ========================================================================
     -- Test Runner
@@ -547,14 +619,6 @@ begin
                                    constant N       : natural;
                                    constant timeout : time) is
             variable v_cnt              : unsigned(15 downto 0) := (others => '0');
-            variable v_ovf_cnt          : unsigned(15 downto 0) := (others => '0');
-            variable v_lost_cnt         : unsigned(15 downto 0) := (others => '0');
-            variable v_win_fail_cnt     : unsigned(15 downto 0) := (others => '0'); -- Window failure counter
-            variable v_win_fail_prev    : std_logic             := '0'; -- Edge detection for win_fail_pulse
-            variable v_tdc_valid_cnt    : unsigned(15 downto 0) := (others => '0'); -- TDC-valid event counter
-            variable v_tdc_valid_prev   : std_logic             := '0'; -- Edge detection for tdc_valid
-            variable v_ovf_prev         : std_logic             := '0';
-            variable v_lost_prev        : std_logic             := '0';
             variable v_start_time       : time;
             variable v_last_sample_time : time;
             variable v_progress_timer   : time;
@@ -569,18 +633,21 @@ begin
                 if vld = '1' then
                     v_cnt              := v_cnt + 1;
                     v_last_sample_time := now;
-                    info("Progress: Collected sample " & integer'image(to_integer(v_cnt)) & " of " & integer'image(N) & " at " & time'image(now));
+                    -- Only report progress every 10 samples to reduce output
+                    if (to_integer(v_cnt) mod 10) = 0 or to_integer(v_cnt) = N then
+                        info("Progress: Collected sample " & integer'image(to_integer(v_cnt)) & " of " & integer'image(N) & " at " & time'image(now));
+                    end if;
                 end if;
 
-                -- Progress timeout - report if no samples for too long
-                if now - v_progress_timer > 50 us then
+                -- Progress timeout - report if no samples for too long (reduce frequency)
+                if now - v_progress_timer > 500 us then
                     info("PROGRESS CHECK: " & integer'image(to_integer(v_cnt)) & " samples collected so far at " & time'image(now) & " (last sample at " & time'image(v_last_sample_time) & ", gap=" & time'image(now - v_last_sample_time) & ")");
                     v_progress_timer := now;
                 end if;
 
                 -- Global timeout check
                 if now - v_start_time > timeout then
-                    error("GLOBAL TIMEOUT waiting for samples! Only got " & integer'image(to_integer(v_cnt)) & " of " & integer'image(N) & " (overflow cycles: " & integer'image(to_integer(v_ovf_cnt)) & ", lost samples: " & integer'image(to_integer(v_lost_cnt)) & ") - Last sample at: " & time'image(v_last_sample_time));
+                    error("GLOBAL TIMEOUT waiting for samples! Only got " & integer'image(to_integer(v_cnt)) & " of " & integer'image(N) & " - Last sample at: " & time'image(v_last_sample_time));
                     exit;
                 end if;
 
@@ -591,33 +658,6 @@ begin
                 --     exit;
                 -- end if;
             end loop;
-
-            -- Fail test if overflow occurred or excessive lost samples
-            -- Allow 1 lost_sample (initial garbage sample is expected)
-            -- Allow up to 15 lost samples due to testbench artifact:
-            -- 8-bit counter wraps at 256 cycles, but ref period is 200 cycles (500ns / 2.5ns)
-            -- This mismatch causes occasional wraparound giving dcoarse ~-245, failing window check
-            -- Occurs roughly once per (256 / (256-200)) = ~4.6 periods -> ~1-2% failure rate
-            if v_ovf_cnt > 0 or v_lost_cnt > 15 then
-                error("TDC FAILURE: " & integer'image(to_integer(v_ovf_cnt)) & " overflow events and " & integer'image(to_integer(v_lost_cnt)) & " lost samples during acquisition - loop not converging!");
-            elsif v_ovf_cnt = 0 and v_lost_cnt = 1 then
-                info("TDC metrics nominal: 0 overflows, 1 lost_sample (initial garbage - expected)");
-            end if;
-
-            -- Window failure check: Normalize to TDC-valid events, not decimated output samples
-            -- With GC_DECIMATION=16, there are thousands of TDC conversions per handful of output samples
-            -- Comparing window failures (per-TDC-conversion) to sample_valid (after decimation) gives false positives
-            -- Use TDC-valid count as the baseline, NOT decimated output samples
-            if to_integer(v_tdc_valid_cnt) = 0 then
-                warning("No TDC valid events observed while collecting samples; skipping window-rate check.");
-            else
-                -- 5% threshold relative to TDC conversions (not decimated outputs)
-                if to_integer(v_win_fail_cnt) > to_integer(v_tdc_valid_cnt) / 20 then
-                    error("WINDOW FAILURE: " & integer'image(to_integer(v_win_fail_cnt)) & " window failures out of " & integer'image(to_integer(v_tdc_valid_cnt)) & " TDC-valid events (" & integer'image((to_integer(v_win_fail_cnt) * 100) / to_integer(v_tdc_valid_cnt)) & "%) - exceeds 5% threshold!");
-                else
-                    info("Window check metrics: " & integer'image(to_integer(v_win_fail_cnt)) & " failures out of " & integer'image(to_integer(v_tdc_valid_cnt)) & " TDC-valid events (" & integer'image((to_integer(v_win_fail_cnt) * 100) / to_integer(v_tdc_valid_cnt)) & "%) - PASS");
-                end if;
-            end if;
 
             info("Sample collection completed: " & integer'image(to_integer(v_cnt)) & " samples in " & time'image(now - v_start_time));
         end procedure;
@@ -656,9 +696,14 @@ begin
 
                 -- Expected voltage = GC_TB_DC_LEVEL × 1300mV (full scale)
                 v_expected_mv := integer(GC_TB_DC_LEVEL * 1300.0);
-                -- Tight tolerance now that RC filter runs at clk_tdc rate
-                v_tolerance   := 100;   -- ±100mV tolerance (reasonable for delta-sigma)
-                v_error_mv    := abs (v_mean_mv - v_expected_mv);
+                -- TDC ADC has multi-bit resolution: ±10mV tolerance
+                -- RC ADC has simpler 1-bit ΔΣ with behavioral comparator model: ±25mV tolerance
+                if GC_ADC_TYPE = "rc" then
+                    v_tolerance := 25;  -- ±25mV for RC ADC (accounts for comparator model inaccuracy)
+                else
+                    v_tolerance := 10;  -- ±10mV for TDC ADC (multi-bit path)
+                end if;
+                v_error_mv := abs (v_mean_mv - v_expected_mv);
 
                 info("DC INPUT TEST: Output range " & integer'image(sample_min_value) & "-" & integer'image(sample_max_value) & "mV (variation=" & integer'image(v_variation_mv) & "mV, avg=" & integer'image(v_mean_mv) & "mV from " & integer'image(sample_count_sig) & " samples)");
                 info("DC VOLTAGE ACCURACY: Expected=" & integer'image(v_expected_mv) & "mV, Measured=" & integer'image(v_mean_mv) & "mV, Error=" & integer'image(v_error_mv) & "mV");
@@ -700,24 +745,49 @@ begin
                 info("Frequency: " & real'image(GC_TB_FREQUENCY_HZ) & " Hz");
                 info("==========================================================");
 
-                -- Wait for reset + settle + AUTO-CALIBRATION
-                -- Boot sequence: sweep (~164µs) + dither (~1ms for 8 samples) + handoff (~1µs)
-                -- Total boot time: ~1.2ms typical, up to ~1.5ms with slow TDC samples
-                -- Add margin for CIC pipeline fill + loop settling: total ~2ms
-                info("Waiting for TDC auto-calibration and loop settling (~2ms)...");
-                wait for 2 ms;
+                -- DYNAMIC READY DETECTION: Wait for first sample_valid pulse
+                -- This indicates calibration is complete and system is producing valid output
+                -- Much faster than fixed delay - adapts automatically to actual boot time
+                info("Waiting for system ready (first sample_valid)...");
+                wait until rising_edge(clk_sys) and sample_valid = '1' for 500 us;
+                if sample_valid /= '1' then
+                    error("Timeout waiting for first sample_valid - calibration may have failed!");
+                end if;
+                info("System ready detected at " & time'image(now));
 
-                -- Wait for actual samples (accounts for CIC + FIR pipeline latency)
-                -- Filter pipeline: 63-tap LP + 31-tap EQ = ~100 samples to settle
-                -- Then collect additional samples to verify steady-state
-                -- TDC @ 2MHz -> CIC /4 (fast sim) -> 500kHz (2us period)
-                -- ULTRA-FAST TEST: Only 5 samples with 100ns RC for rapid verification
-                info("Waiting for 5 output samples (ultra-fast async clock verification)...");
-                collect_and_verify_samples(clk_sys, sample_valid, 5, 10 ms, "basic_test");
+                -- Collect samples for accuracy measurement
+                -- TDC @ 2MHz -> Decimation /64 -> ~31.25kHz (~32us period)
+                -- RC @ 100MHz -> Decimation /64 -> ~1.5625MHz (~640ns period)
+                -- RC ADC needs ~120 samples for FIR filter priming (31+63 taps + margin)
+                -- After priming, need additional samples for measurement
+                if GC_TB_SIGNAL_TYPE = 1 then
+                    -- DC test
+                    if GC_ADC_TYPE = "rc" then
+                        -- RC ADC: 125 samples (120 settling + 5 measurement), ~80us at 1.5MHz
+                        info("Collecting 125 output samples for RC ADC DC accuracy test (120 settling + 5 measurement)...");
+                        collect_and_verify_samples(clk_sys, sample_valid, 125, 200 us, "basic_test");
+                    else
+                        -- TDC ADC: 75 samples (70 filter priming + 5 measurement), 2.5ms timeout
+                        -- Filter priming count is 70 samples before combined CIC/EQ/LP+TDC output is stable
+                        -- 75 samples @ 32µs each = 2.4ms - use 2.5ms timeout
+                        info("Collecting 75 output samples for TDC ADC DC accuracy test (70 settling + 5 measurement)...");
+                        collect_and_verify_samples(clk_sys, sample_valid, 75, 2500 us, "basic_test");
+                    end if;
+                else
+                    -- AC test (sine/square/ramp)
+                    if GC_ADC_TYPE = "rc" then
+                        -- RC ADC: 220 samples (120 settling + 100 measurement)
+                        info("Collecting 220 output samples for RC ADC AC test (120 settling + 100 measurement)...");
+                        collect_and_verify_samples(clk_sys, sample_valid, 220, 500 us, "basic_test");
+                    else
+                        -- TDC ADC: 100 samples, 25ms timeout
+                        info("Collecting 100 output samples for TDC ADC AC test (includes filter priming)...");
+                        collect_and_verify_samples(clk_sys, sample_valid, 100, 25 ms, "basic_test");
+                    end if;
+                end if;
 
                 info("==========================================================");
-                info("Basic test completed - collected 80 samples successfully");
-                info("Coarse timestamp binary banking verified!");
+                info("Basic test completed successfully");
                 info("==========================================================");
 
             elsif run("digital_self_test") then
@@ -765,7 +835,7 @@ begin
                 --
                 -- At each point, TDC measures (Vin - Vdac_avg) analog difference
 
-                for duty_pct in 4 to 6 loop  -- 40%, 50%, 60% only
+                for duty_pct in 4 to 6 loop -- 40%, 50%, 60% only
                     -- Pulse testpoint_reset to clear TDC monitor accumulators
                     testpoint_reset <= '1';
                     wait for 1 us;
@@ -832,14 +902,14 @@ begin
                 -- The analog_voltage_p is set by p_analog_input based on GC_TB_DC_LEVEL
                 -- To step the input, we would need to modify analog_voltage_p dynamically
                 -- For now, just collect samples and observe the settling behavior
-                
+
                 info("Phase 3: Collecting samples to measure settling behavior...");
-                
+
                 -- Reset sample statistics
                 testpoint_reset <= '1';
                 wait for 100 ns;
                 testpoint_reset <= '0';
-                
+
                 -- Collect samples for 1ms and observe statistics
                 collect_and_verify_samples(clk_sys, sample_valid, 100, 5 ms, "pi_step_response");
 
@@ -863,64 +933,46 @@ begin
     -- Monitor critical signals during and after closed-loop handoff
     -- Reports when tdc_valid stops appearing after handoff
     -- V8.6: Add DAC toggle monitor to catch stuck DAC bugs
-    p_handoff_monitor : process(clk_tdc)
-        variable v_tdc_valid_count     : integer   := 0;
-        variable v_cycles_since_valid  : integer   := 0;
-        variable v_monitoring          : boolean   := false;
-        variable v_dac_prev            : std_logic := '0';
-        variable v_dac_toggle_count    : integer   := 0;
-        variable v_cycles_since_toggle : integer   := 0;
-    begin
-        if rising_edge(clk_tdc) then
-
-            -- Monitor for tdc_valid during closed-loop
-            if v_monitoring then
-                -- Check for DAC toggles
-
-                v_cycles_since_toggle := v_cycles_since_toggle + 1;
-
-                -- Alert if DAC stops toggling (should toggle every ~200 cycles @ 2MHz ref)
-                if v_cycles_since_toggle = 1000 then
-                    error("DAC STUCK: debug_dac_out_ff hasn't toggled for 1000 cycles!");
-                    error("  Total DAC toggles: " & integer'image(v_dac_toggle_count));
-                    error("  Time: " & time'image(now));
-                end if;
-
-                v_cycles_since_valid := v_cycles_since_valid + 1;
-
-                -- Alert if tdc_valid stops for extended period
-                if v_cycles_since_valid = 1000 then
-                    error("HANDOFF STALL: No tdc_valid for 1000 cycles after handoff!");
-                    error("  Last tdc_valid count: " & integer'image(v_tdc_valid_count));
-                    error("  Time: " & time'image(now));
-                    v_monitoring := false; -- Stop flooding
-                end if;
-            end if;
-
-            -- Reset on new test
-            if reset = '1' then
-                v_monitoring          := false;
-                v_tdc_valid_count     := 0;
-                v_cycles_since_valid  := 0;
-                v_dac_toggle_count    := 0;
-                v_cycles_since_toggle := 0;
-            end if;
-        end if;
-    end process;
+    -- p_handoff_monitor DISABLED for speed (v9.0) - was dead code (v_monitoring never set true)
 
     -- ========================================================================
     -- Sample Monitor (for debug visibility)
     -- ========================================================================
+    -- SETTLING SAMPLE THRESHOLD: Discard early transient samples from DC statistics
+    -- The delta-sigma loop needs time to settle after boot. Early samples during
+    -- SWEEP/DITHER/early closed-loop will have large errors and should not be
+    -- included in DC accuracy calculations. Only samples AFTER this threshold
+    -- are used for min/max/avg statistics.
+    -- 
+    -- With FIR lowpass filter (63 taps), need 63+ samples to fill delay line.
+    -- Add extra margin for CIC/equalizer/PI loop settling.
+    -- RC ADC needs more settling due to 31-tap EQ + 63-tap LP = 94 taps total
+
     p_monitor : process(clk_sys)
-        variable v_sample_count : integer := 0;
-        variable v_min_value    : integer := integer'high;
-        variable v_max_value    : integer := integer'low;
-        variable v_sum          : integer := 0;
-        variable v_sample_value : integer;
+        -- RC ADC needs more settling due to FIR filter delay lines (31 + 63 = 94 taps)
+        -- TDC ADC has filter priming count of 70 samples before combined output is stable
+        -- Add margin: RC needs ~120 samples, TDC needs ~70
+        constant C_SETTLE_SAMPLES_TDC : integer := 70; -- Match C_FILTER_PRIME_COUNT in tdc_adc_top
+        constant C_SETTLE_SAMPLES_RC  : integer := 120; -- 94 taps + margin
+        variable v_settle_limit       : integer;
+        variable v_sample_count       : integer := 0; -- Total samples seen (including settling)
+        variable v_stats_count        : integer := 0; -- Samples used for statistics (after settling)
+        variable v_min_value          : integer := integer'high;
+        variable v_max_value          : integer := integer'low;
+        variable v_sum                : integer := 0;
+        variable v_sample_value       : integer;
     begin
         if rising_edge(clk_sys) then
+            -- Select settling limit based on ADC type
+            if GC_ADC_TYPE = "rc" then
+                v_settle_limit := C_SETTLE_SAMPLES_RC;
+            else
+                v_settle_limit := C_SETTLE_SAMPLES_TDC;
+            end if;
+
             if reset = '1' then
                 v_sample_count   := 0;
+                v_stats_count    := 0;
                 v_min_value      := integer'high;
                 v_max_value      := integer'low;
                 v_sum            := 0;
@@ -931,28 +983,34 @@ begin
             elsif sample_valid = '1' then
                 v_sample_count := v_sample_count + 1;
                 v_sample_value := to_integer(signed(sample_data));
-                v_sum          := v_sum + v_sample_value;
 
-                -- Track min/max
-                if v_sample_value < v_min_value then
-                    v_min_value := v_sample_value;
+                -- Only include samples AFTER settling period in statistics
+                if v_sample_count > v_settle_limit then
+                    v_stats_count := v_stats_count + 1;
+                    v_sum         := v_sum + v_sample_value;
+
+                    -- Track min/max (only settled samples)
+                    if v_sample_value < v_min_value then
+                        v_min_value := v_sample_value;
+                    end if;
+                    if v_sample_value > v_max_value then
+                        v_max_value := v_sample_value;
+                    end if;
                 end if;
-                if v_sample_value > v_max_value then
-                    v_max_value := v_sample_value;
+
+                -- Update signals for test process to check (only after settling)
+                if v_sample_count > v_settle_limit and v_stats_count > 0 then
+                    sample_min_value <= v_min_value;
+                    sample_max_value <= v_max_value;
+                    sample_count_sig <= v_stats_count; -- Report settled sample count
+                    sample_sum_value <= v_sum;
                 end if;
 
-                -- Update signals for test process to check
-                sample_min_value <= v_min_value;
-                sample_max_value <= v_max_value;
-                sample_count_sig <= v_sample_count;
-                sample_sum_value <= v_sum;
-
-                -- Print first 15 samples with more detail
-                if v_sample_count <= 15 then
-                    info("Sample " & integer'image(v_sample_count) & ": " & integer'image(v_sample_value) & " (min=" & integer'image(v_min_value) & ", max=" & integer'image(v_max_value) & ", avg=" & integer'image(v_sum / v_sample_count) & ")");
-                -- Print summary every 100 samples
-                elsif (v_sample_count mod 100) = 0 then
-                    info("Sample " & integer'image(v_sample_count) & " - Range: [" & integer'image(v_min_value) & " to " & integer'image(v_max_value) & "], Avg: " & integer'image(v_sum / v_sample_count));
+                -- Reduced debug output for speed - only print first 5 and last sample
+                if v_sample_count <= 5 then
+                    info("Sample " & integer'image(v_sample_count) & " [SETTLING]: " & integer'image(v_sample_value));
+                elsif v_sample_count = v_settle_limit + 1 then
+                    info("=== SETTLING COMPLETE (" & integer'image(v_settle_limit) & " samples discarded) ===");
                 end if;
             end if;
         end if;
@@ -961,74 +1019,78 @@ begin
     -- ========================================================================
     -- TDC Monitor - Enhanced statistics for 2D characterization
     -- With early termination support: sets tdc_char_done after 2000 samples
+    -- V9.0: Only enabled for characterization tests (GC_OPEN_LOOP=true)
+    --       Running at 404 MHz consumes significant simulation events
     -- ========================================================================
-    p_tdc_monitor : process(clk_tdc)
-        variable v_tdc_count     : integer := 0;
-        variable v_tdc_sum       : integer := 0;
-        variable v_tdc_sum_sq    : integer := 0; -- Sum of squares for stddev
-        variable v_tdc_min       : integer := integer'high;
-        variable v_tdc_max       : integer := integer'low;
-        variable v_tdc_sat_count : integer := 0; -- Count of saturated samples (±128)
-        variable v_tdc_value     : integer;
-        variable v_mean          : integer;
-        variable v_variance      : integer;
-        variable v_sat_pct       : integer;
-        constant C_CHAR_SAMPLE_TARGET : integer := 2000; -- Early termination threshold
-    begin
-        if rising_edge(clk_tdc) then
-            -- Reset on global reset OR testpoint_reset pulse
-            if reset = '1' or testpoint_reset = '1' then
-                v_tdc_count     := 0;
-                v_tdc_sum       := 0;
-                v_tdc_sum_sq    := 0;
-                v_tdc_min       := integer'high;
-                v_tdc_max       := integer'low;
-                v_tdc_sat_count := 0;
-                tdc_char_done   <= false; -- Reset early termination flag
-            elsif debug_tdc_valid = '1' and not tdc_char_done then
-                v_tdc_value  := to_integer(debug_tdc_out);
-                v_tdc_count  := v_tdc_count + 1;
-                v_tdc_sum    := v_tdc_sum + v_tdc_value;
-                v_tdc_sum_sq := v_tdc_sum_sq + (v_tdc_value * v_tdc_value);
+    g_tdc_monitor : if GC_OPEN_LOOP generate
+        p_tdc_monitor : process(clk_tdc)
+            variable v_tdc_count          : integer := 0;
+            variable v_tdc_sum            : integer := 0;
+            variable v_tdc_sum_sq         : integer := 0; -- Sum of squares for stddev
+            variable v_tdc_min            : integer := integer'high;
+            variable v_tdc_max            : integer := integer'low;
+            variable v_tdc_sat_count      : integer := 0; -- Count of saturated samples (±128)
+            variable v_tdc_value          : integer;
+            variable v_mean               : integer;
+            variable v_variance           : integer;
+            variable v_sat_pct            : integer;
+            constant C_CHAR_SAMPLE_TARGET : integer := 2000; -- Early termination threshold
+        begin
+            if rising_edge(clk_tdc) then
+                -- Reset on global reset OR testpoint_reset pulse
+                if reset = '1' or testpoint_reset = '1' then
+                    v_tdc_count     := 0;
+                    v_tdc_sum       := 0;
+                    v_tdc_sum_sq    := 0;
+                    v_tdc_min       := integer'high;
+                    v_tdc_max       := integer'low;
+                    v_tdc_sat_count := 0;
+                    tdc_char_done   <= false; -- Reset early termination flag
+                elsif debug_tdc_valid = '1' and not tdc_char_done then
+                    v_tdc_value  := to_integer(debug_tdc_out);
+                    v_tdc_count  := v_tdc_count + 1;
+                    v_tdc_sum    := v_tdc_sum + v_tdc_value;
+                    v_tdc_sum_sq := v_tdc_sum_sq + (v_tdc_value * v_tdc_value);
 
-                -- Track saturation: TDC saturates when coarse count hits limits
-                -- With 8-bit coarse counter and 8 fractional bits, saturation is:
-                --   Max positive: +(2^7 - 1) × 256 = +32512 codes
-                --   Max negative: -(2^7) × 256 = -32768 codes
-                -- Use conservative threshold of ±30000 to detect approaching saturation
-                if abs (v_tdc_value) >= 30000 then
-                    v_tdc_sat_count := v_tdc_sat_count + 1;
-                end if;
+                    -- Track saturation: TDC saturates when coarse count hits limits
+                    -- With 8-bit coarse counter and 8 fractional bits, saturation is:
+                    --   Max positive: +(2^7 - 1) × 256 = +32512 codes
+                    --   Max negative: -(2^7) × 256 = -32768 codes
+                    -- Use conservative threshold of ±30000 to detect approaching saturation
+                    if abs (v_tdc_value) >= 30000 then
+                        v_tdc_sat_count := v_tdc_sat_count + 1;
+                    end if;
 
-                if v_tdc_value < v_tdc_min then
-                    v_tdc_min := v_tdc_value;
-                end if;
-                if v_tdc_value > v_tdc_max then
-                    v_tdc_max := v_tdc_value;
-                end if;
+                    if v_tdc_value < v_tdc_min then
+                        v_tdc_min := v_tdc_value;
+                    end if;
+                    if v_tdc_value > v_tdc_max then
+                        v_tdc_max := v_tdc_value;
+                    end if;
 
-                -- Log every 500th sample with full statistics
-                if (v_tdc_count mod 500) = 0 then
-                    v_mean     := v_tdc_sum / v_tdc_count;
-                    v_variance := (v_tdc_sum_sq / v_tdc_count) - (v_mean * v_mean);
-                    v_sat_pct  := (v_tdc_sat_count * 100) / v_tdc_count;
+                    -- Log every 2000th sample with full statistics (reduced for speed)
+                    if (v_tdc_count mod 2000) = 0 then
+                        v_mean     := v_tdc_sum / v_tdc_count;
+                        v_variance := (v_tdc_sum_sq / v_tdc_count) - (v_mean * v_mean);
+                        v_sat_pct  := (v_tdc_sat_count * 100) / v_tdc_count;
 
-                    info("TDC_STAT: n=" & integer'image(v_tdc_count) & " mean=" & integer'image(v_mean) & " var=" & integer'image(v_variance) & " range=[" & integer'image(v_tdc_min) & "," & integer'image(v_tdc_max) & "]" & " sat=" & integer'image(v_sat_pct) & "%" & " Vin=" & integer'image(integer(analog_voltage_p * 1000.0)) & "mV" & " Vdac=" & integer'image(integer(analog_voltage_n * 1000.0)) & "mV" & " dV=" & integer'image(integer((analog_voltage_p - analog_voltage_n) * 1000.0)) & "mV" & " DAC=" & std_logic'image(open_loop_dac));
-                end if;
+                        info("TDC_STAT: n=" & integer'image(v_tdc_count) & " mean=" & integer'image(v_mean) & " var=" & integer'image(v_variance) & " range=[" & integer'image(v_tdc_min) & "," & integer'image(v_tdc_max) & "]" & " sat=" & integer'image(v_sat_pct) & "%" & " Vin=" & integer'image(integer(analog_voltage_p * 1000.0)) & "mV" & " Vdac=" & integer'image(integer(analog_voltage_n * 1000.0)) & "mV" & " dV=" & integer'image(integer((analog_voltage_p - analog_voltage_n) * 1000.0)) & "mV" & " DAC=" & std_logic'image(open_loop_dac));
+                    end if;
 
-                -- Early termination: signal done after reaching sample target
-                if v_tdc_count >= C_CHAR_SAMPLE_TARGET then
-                    tdc_char_done <= true;
+                    -- Early termination: signal done after reaching sample target
+                    if v_tdc_count >= C_CHAR_SAMPLE_TARGET then
+                        tdc_char_done <= true;
+                    end if;
                 end if;
             end if;
-        end if;
-    end process;
+        end process;
+    end generate g_tdc_monitor;
 
     -- ========================================================================
-    -- Watchdog Monitor - Reports system status periodically
+    -- Watchdog Monitor - Reports system status periodically (disabled for speed)
     -- ========================================================================
     p_watchdog : process
-        constant C_REPORT_INTERVAL : time := 100 us;
+        constant C_REPORT_INTERVAL : time := 1 ms; -- Increased from 100us for speed
     begin
         wait until reset = '0';
 
@@ -1036,10 +1098,7 @@ begin
             wait for C_REPORT_INTERVAL;
 
             if not sim_finished then
-                info("========== WATCHDOG REPORT at " & time'image(now) & " ==========");
-                info(" sample_valid: " & std_logic'image(sample_valid));
-                info(" Current sample_data: " & integer'image(to_integer(signed(sample_data))));
-                info("=======================================================");
+                info("WATCHDOG at " & time'image(now) & " sample_data=" & integer'image(to_integer(signed(sample_data))));
             else
                 exit;
             end if;

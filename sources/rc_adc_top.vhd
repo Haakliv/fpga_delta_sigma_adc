@@ -8,6 +8,7 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 library fpga_lib;
+use fpga_lib.dsp_utils_pkg.all;
 
 entity rc_adc_top is
   generic(
@@ -62,6 +63,9 @@ architecture rtl of rc_adc_top is
   signal lp_data_out   : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
   signal lp_valid_out  : std_logic;
 
+  -- Delayed valid for alignment with mv_code
+  signal sample_valid_delayed : std_logic := '0';
+
   -- Status monitoring
   signal activity_counter : unsigned(15 downto 0) := (others => '0');
   signal valid_counter    : unsigned(7 downto 0)  := (others => '0');
@@ -80,17 +84,8 @@ begin
   -- The LVDS I/O buffer (configured in Quartus with LVDS_E_3V input standard)
   -- performs true differential comparison: analog_in = (P > N) ? '1' : '0'
   -- 
-  -- This is a DIRECT PASS-THROUGH (combinational) to minimize ΣΔ loop delay
-  -- No register here - the only FF in the feedback loop is in p_dac_feedback process
+  -- This is a DIRECT PASS-THROUGH (combinational) to minimize deltasigma loop delay
   lvds_bit_stream <= analog_in;
-
-  -- ========================================================================
-  -- CRITICAL: Dual-path architecture for optimal sigma-delta performance
-  -- ========================================================================
-  -- Path A: Direct DAC feedback (0 FF comb, 1 FF in DAC) - Minimize loop delay
-  -- Path B: Synchronized decimator input (2 FF) - Metastability protection
-  -- Total ΣΔ loop delay = 1 cycle (DAC output register only)
-  -- ========================================================================
 
   -- Path A: 1-bit DAC feedback implementation (single register)
   -- This is the ONLY register in the feedback loop
@@ -167,46 +162,33 @@ begin
       valid_out => lp_valid_out
     );
 
+  -- Delay valid signal to align with mv_code (registered mV conversion)
+  p_sample_valid_delay : process(clk)
+  begin
+    if rising_edge(clk) then
+      if reset = '1' then
+        sample_valid_delayed <= '0';
+      else
+        sample_valid_delayed <= lp_valid_out;
+      end if;
+    end if;
+  end process;
+
   -- Expose decimated samples for external streaming logic
-  sample_data  <= lp_data_out;
-  sample_valid <= lp_valid_out;
+  -- Output is mV-scaled (0..1300mV range), consistent with TDC ADC
+  sample_data  <= std_logic_vector(resize(mv_code, GC_DATA_WIDTH));
+  sample_valid <= sample_valid_delayed;
 
-  -- Convert ADC output to millivolts (0..1200 mV range)
-  -- With proper ΔΣ loop: duty cycle of feedback = Vin/VFS
-  -- CIC/EQ/LP measure this duty cycle (average) with filtering
-  -- Simple scaling: output_mV = (lp_data × scale_factor) + offset
-
+  -- Convert ADC output to millivolts (0..1300 mV range)
+  -- Uses shared function from dsp_utils_pkg for consistency with TDC ADC
   p_mv_from_lp : process(clk)
-    variable v_lp_signed : signed(GC_DATA_WIDTH - 1 downto 0);
-    variable v_scaled_mv : signed(31 downto 0);
   begin
     if rising_edge(clk) then
       if reset = '1' then
         mv_code <= (others => '0');
       elsif lp_valid_out = '1' then
-        -- Convert signed Q-format [-1, +1) to millivolts [0, 1200]
-        -- CIC already removes its DC gain (R³) internally via C_SCALE_SHIFT
-        -- LP output is Q-format: m = y / 2^(W-1)
-        -- Voltage mapping: V = 600*m + 600
-        -- Combined: V = (y*600)/2^(W-1) + 600
-        v_lp_signed := signed(lp_data_out);
-
-        -- Scale: shift by (GC_DATA_WIDTH - 1) to undo Q-format
-        -- Multiply creates 64-bit result, shift, then resize to 32-bit
-        v_scaled_mv := resize(shift_right(resize(v_lp_signed, 32) * to_signed(600, 32),
-                                          GC_DATA_WIDTH - 1), 32);
-
-        -- Add midscale offset
-        v_scaled_mv := v_scaled_mv + to_signed(600, 32);
-
-        -- Saturate to 0..1200 mV range
-        if v_scaled_mv < 0 then
-          mv_code <= (others => '0');
-        elsif v_scaled_mv > to_signed(1200, 32) then
-          mv_code <= to_unsigned(1200, 16);
-        else
-          mv_code <= unsigned(v_scaled_mv(15 downto 0));
-        end if;
+        -- Use shared conversion function (Q-format to mV)
+        mv_code <= to_millivolts(signed(lp_data_out), GC_DATA_WIDTH);
       end if;
     end if;
   end process;

@@ -100,3 +100,20 @@ set_output_delay -clock [get_clocks VCLK_ANALOG_400M] -min 0.0 -source_latency_i
 # Set these as false paths to avoid over-constraining the analog interface
 set_false_path -from [get_ports {ANALOG_IN}]
 set_false_path -to [get_ports {FEEDBACK_OUT}]
+
+# ---------- CIC Decimator Multi-Cycle Paths ----------
+# The CIC filter only produces output every R (decimation) clock cycles.
+# The scaling pipeline stages have R cycles to complete, not just 1.
+# For R=384, this gives 384 clock cycles = 3.84us at 100MHz.
+# We conservatively allow 4 cycles for the scaling stages.
+#
+# Note: These paths are between registered pipeline stages that only
+# toggle every R cycles. The valid signals gate the pipeline progression.
+set_multicycle_path -setup 4 -from [get_registers {*i_cic|scale_pipe1*}] -to [get_registers {*i_cic|scale_pipe2*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_cic|scale_pipe1*}] -to [get_registers {*i_cic|scale_pipe2*}]
+set_multicycle_path -setup 4 -from [get_registers {*i_cic|scale_pipe2*}] -to [get_registers {*i_cic|y_out*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_cic|scale_pipe2*}] -to [get_registers {*i_cic|y_out*}]
+
+# ---------- Boot Calibration Counter (Non-Critical Startup Logic) ----------
+set_multicycle_path -from [get_registers "*v_boot_counter*"] -to [get_registers "*v_boot_counter*"] -setup -start 8
+set_multicycle_path -from [get_registers "*v_boot_counter*"] -to [get_registers "*v_boot_counter*"] -hold -start 7

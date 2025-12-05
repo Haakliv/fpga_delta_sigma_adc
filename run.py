@@ -16,6 +16,16 @@ if "-c" in sys.argv:
     enable_cov = True
     sys.argv.remove("-c")  # remove before giving argv to VUnit
 
+# Handle fast mode flag (disables +acc for faster simulation)
+fast_mode = False
+if "-f" in sys.argv or "--fast" in sys.argv:
+    fast_mode = True
+    if "-f" in sys.argv:
+        sys.argv.remove("-f")
+    if "--fast" in sys.argv:
+        sys.argv.remove("--fast")
+    print("FAST MODE: Disabling +acc for faster simulation (no waveform visibility)")
+
 # Remove --clean flag if present to prevent automatic clean
 if "--clean" in sys.argv:
     sys.argv.remove("--clean")
@@ -40,8 +50,10 @@ for fname in [
     "fir_equalizer.vhd",
     "fir_lowpass.vhd",
     "uart_sample_streamer.vhd",
+    "adc_capture.vhd",           # Burst capture with inferred block RAM
     "tdc_quantizer.vhd",
     "tdc_adc_top.vhd",
+    "rc_adc_top.vhd",            # RC delta-sigma ADC
 ]:
     f = sources_dir / fname
     if f.exists():
@@ -165,7 +177,7 @@ print("Added reset controller files")
 
 # Add testbenches
 tb_files = [
-    ROOT / "testbench/tdc_adc_top_tb.vhd",
+    ROOT / "testbench/adc_top_tb.vhd",       # Unified ADC testbench (TDC and RC)
     ROOT / "testbench/tdc_characterization_tb.vhd",  # Open-loop TDC characterization
 ]
 for tb in tb_files:
@@ -179,11 +191,11 @@ if not tb_files:
 
 # Compiler/simulator options
 vu.set_compile_option("modelsim.vcom_flags", ["-2008", "-explicit"])
-# Add -voptargs=+acc to show variables in GUI waveforms
-# Add Altera primitive libraries for Agilex 5 simulation
-vu.set_sim_option("modelsim.vsim_flags", [
+
+# Simulator flags - conditionally include +acc based on fast_mode
+# +acc enables full signal visibility for waveforms but slows simulation 5-10x
+vsim_flags = [
     "-t", "ps", 
-    "-voptargs=+acc",
     "-L", "altera_mf",
     "-L", "altera",
     "-L", "altera_lnsim",
@@ -194,7 +206,10 @@ vu.set_sim_option("modelsim.vsim_flags", [
     "-L", "altera_mf_ver",
     "-L", "altera_ver",
     "-L", "altera_lnsim_ver",
-])
+]
+if not fast_mode:
+    vsim_flags.insert(1, "-voptargs=+acc")  # Insert after "-t", "ps"
+vu.set_sim_option("modelsim.vsim_flags", vsim_flags)
 
 if enable_cov:
     lib.set_sim_option("enable_coverage", True)
@@ -204,16 +219,18 @@ def main():
     """Main test run"""
     print(f"Found {len(lib.get_test_benches())} test bench(es)")
 
-    # Configure test cases for tdc_adc_top_tb with realistic signals
+    # Configure test cases for adc_top_tb (unified TDC and RC ADC testbench)
     # NOTE: tb_test_duration_ms is actually in MICROSECONDS (scaled by 1us in TB)
     # This prevents super-slow simulation at 400MHz TDC clock
     # Signal types: 0=sine, 1=DC, 2=ramp, 3=square
-    tdc_tb = lib.test_bench("tdc_adc_top_tb")
+    # GC_ADC_TYPE: "tdc" for TDC ADC, "rc" for RC ADC
+    tdc_tb = lib.test_bench("adc_top_tb")
     if tdc_tb:
         # Test 1: Sine wave at 1kHz
         tdc_tb.test("basic_test").add_config(
             name="sine_1khz",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=0,  # Sine
                 tb_amplitude=0.3,
                 tb_frequency_hz=1000.0,
@@ -223,14 +240,15 @@ def main():
             )
         )
         
-        # Test 2: DC level (positive) - 600mV baseline
+        # Test 2: DC level (positive) - 650mV (midscale for 1.3V range)
         tdc_tb.test("basic_test").add_config(
-            name="dc_positive",
+            name="dc_positive_650mv",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 GC_TB_SIGNAL_TYPE=1,  # DC
                 GC_TB_AMPLITUDE=0.0,
                 GC_TB_FREQUENCY_HZ=0.0,
-                GC_TB_DC_LEVEL=0.5,   # 600mV (0.5 * 1200mV)
+                GC_TB_DC_LEVEL=0.5,   # 650mV (0.5 * 1300mV)
                 GC_TB_REF_PPM=0.0,
                 GC_TB_JIT_RMS_PS=0.0
             )
@@ -240,6 +258,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="dc_positive_400mv",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 GC_TB_SIGNAL_TYPE=1,  # DC
                 GC_TB_AMPLITUDE=0.0,
                 GC_TB_FREQUENCY_HZ=0.0,
@@ -253,6 +272,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="dc_positive_800mv",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 GC_TB_SIGNAL_TYPE=1,  # DC
                 GC_TB_AMPLITUDE=0.0,
                 GC_TB_FREQUENCY_HZ=0.0,
@@ -266,6 +286,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="dc_positive_1000mv",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 GC_TB_SIGNAL_TYPE=1,  # DC
                 GC_TB_AMPLITUDE=0.0,
                 GC_TB_FREQUENCY_HZ=0.0,
@@ -280,6 +301,7 @@ def main():
         tdc_tb.test("pi_step_response").add_config(
             name="pi_tune_midscale",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 GC_TB_SIGNAL_TYPE=1,  # DC
                 GC_TB_AMPLITUDE=0.0,
                 GC_TB_FREQUENCY_HZ=0.0,
@@ -293,6 +315,7 @@ def main():
         tdc_tb.test("pi_step_response").add_config(
             name="pi_tune_800mv",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 GC_TB_SIGNAL_TYPE=1,  # DC
                 GC_TB_AMPLITUDE=0.0,
                 GC_TB_FREQUENCY_HZ=0.0,
@@ -307,6 +330,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="sine_10khz",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=0,  # Sine
                 tb_amplitude=0.4,
                 tb_frequency_hz=10000.0,
@@ -320,6 +344,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="square_500hz",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=3,  # Square
                 tb_amplitude=0.3,
                 tb_frequency_hz=500.0,
@@ -333,6 +358,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="ramp",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=2,  # Ramp
                 tb_amplitude=0.5,
                 tb_frequency_hz=0.0,
@@ -352,6 +378,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="stress_jitter50ps",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=0,  # Sine
                 tb_amplitude=0.3,
                 tb_frequency_hz=1000.0,
@@ -367,6 +394,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="stress_jitter150ps",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=0,  # Sine
                 tb_amplitude=0.3,
                 tb_frequency_hz=1000.0,
@@ -382,6 +410,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="stress_ppm20",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=0,  # Sine
                 tb_amplitude=0.3,
                 tb_frequency_hz=1000.0,
@@ -397,6 +426,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="stress_ppm100",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=0,  # Sine
                 tb_amplitude=0.3,
                 tb_frequency_hz=1000.0,
@@ -412,6 +442,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="stress_combined_moderate",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=0,  # Sine
                 tb_amplitude=0.3,
                 tb_frequency_hz=1000.0,
@@ -427,6 +458,7 @@ def main():
         tdc_tb.test("basic_test").add_config(
             name="stress_combined_max",
             generics=dict(
+                GC_ADC_TYPE="tdc",
                 tb_signal_type=0,  # Sine
                 tb_amplitude=0.3,
                 tb_frequency_hz=1000.0,
@@ -471,6 +503,7 @@ def main():
             tdc_tb.test("tdc_characterization").add_config(
                 name=f"char2d_{name_suffix}",
                 generics=dict(
+                    GC_ADC_TYPE="tdc",
                     GC_TB_SIGNAL_TYPE=1,  # DC input
                     GC_TB_DC_LEVEL=dc_level,
                     GC_TB_AMPLITUDE=0.0,
@@ -499,6 +532,87 @@ def main():
         print("\nCHARACTERIZATION TESTS (open-loop TDC mapping):")
         print("  - char_dc*: TDC output vs input voltage (300mV to 800mV)")
 
+        # ========================================================================
+        # RC ADC TESTS (GC_ADC_TYPE="rc")
+        # Uses unified adc_top_tb with RC ADC DUT
+        # RC ADC uses 1.3V range (0-1300mV)
+        # ========================================================================
+        
+        # RC ADC: DC tests at various voltages (1.3V range)
+        tdc_tb.test("basic_test").add_config(
+            name="rc_dc_positive_400mv",
+            generics=dict(
+                GC_ADC_TYPE="rc",
+                GC_TB_SIGNAL_TYPE=1,  # DC
+                GC_TB_AMPLITUDE=0.0,
+                GC_TB_FREQUENCY_HZ=0.0,
+                GC_TB_DC_LEVEL=0.308,  # 400mV (0.308 * 1300mV)
+                GC_TB_REF_PPM=0.0,
+                GC_TB_JIT_RMS_PS=0.0
+            )
+        )
+        
+        tdc_tb.test("basic_test").add_config(
+            name="rc_dc_positive_650mv",
+            generics=dict(
+                GC_ADC_TYPE="rc",
+                GC_TB_SIGNAL_TYPE=1,  # DC
+                GC_TB_AMPLITUDE=0.0,
+                GC_TB_FREQUENCY_HZ=0.0,
+                GC_TB_DC_LEVEL=0.5,   # 650mV (0.5 * 1300mV)
+                GC_TB_REF_PPM=0.0,
+                GC_TB_JIT_RMS_PS=0.0
+            )
+        )
+        
+        tdc_tb.test("basic_test").add_config(
+            name="rc_dc_positive_900mv",
+            generics=dict(
+                GC_ADC_TYPE="rc",
+                GC_TB_SIGNAL_TYPE=1,  # DC
+                GC_TB_AMPLITUDE=0.0,
+                GC_TB_FREQUENCY_HZ=0.0,
+                GC_TB_DC_LEVEL=0.692,  # 900mV (0.692 * 1300mV)
+                GC_TB_REF_PPM=0.0,
+                GC_TB_JIT_RMS_PS=0.0
+            )
+        )
+        
+        # RC ADC: Sine wave test
+        tdc_tb.test("basic_test").add_config(
+            name="rc_sine_1khz",
+            generics=dict(
+                GC_ADC_TYPE="rc",
+                tb_signal_type=0,  # Sine
+                tb_amplitude=0.3,
+                tb_frequency_hz=1000.0,
+                tb_dc_level=0.1,
+                tb_noise_level=0.01,
+                tb_test_duration_ms=50.0  # 50 microseconds
+            )
+        )
+        
+        # RC ADC: Ramp test  
+        tdc_tb.test("basic_test").add_config(
+            name="rc_ramp",
+            generics=dict(
+                GC_ADC_TYPE="rc",
+                tb_signal_type=2,  # Ramp
+                tb_amplitude=0.5,
+                tb_frequency_hz=0.0,
+                tb_dc_level=0.0,
+                tb_noise_level=0.01,
+                tb_test_duration_ms=50.0  # 50 microseconds
+            )
+        )
+        
+        print("\nRC ADC TESTS:")
+        print("  - rc_dc_positive_400mv: DC at 400mV")
+        print("  - rc_dc_positive_650mv: DC at 650mV (midscale)")
+        print("  - rc_dc_positive_900mv: DC at 900mV")
+        print("  - rc_sine_1khz: 1kHz sine wave")
+        print("  - rc_ramp: Sawtooth ramp signal")
+
     def post_run(results):
         if not enable_cov:
             return
@@ -509,9 +623,8 @@ def main():
             "-instance=/cic_sinc3_decimator_tb/i_dut",
             "-instance=/fir_equalizer_tb/i_dut",
             "-instance=/fir_lowpass_tb/i_dut",
-            "-instance=/rc_adc_top_tb/i_dut",
+            "-instance=/adc_top_tb/i_dut",
             "-instance=/tdc_quantizer_tb/i_dut",
-            "-instance=/tdc_adc_top_tb/i_dut",
         ]
         run(["vcover", "report", "-html", "-output", "cov_html", *inst_args, ucdb], check=False)
         run(["vcover", "report", "-details", *inst_args, ucdb], check=False)
