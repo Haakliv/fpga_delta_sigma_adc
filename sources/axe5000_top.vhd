@@ -73,6 +73,26 @@ architecture rtl of axe5000_top is
   signal streamer_data    : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
   signal streamer_valid   : std_logic;
   
+  -- TDC monitor signals
+  signal tdc_mon_code     : signed(15 downto 0);
+  signal tdc_mon_center   : signed(15 downto 0);
+  signal tdc_mon_diff     : signed(15 downto 0);
+  signal tdc_mon_dac      : std_logic;
+  signal tdc_mon_valid    : std_logic;
+  
+  -- TDC monitor UART signals
+  signal tdc_uart_data    : std_logic_vector(7 downto 0);
+  signal tdc_uart_valid   : std_logic;
+  signal tdc_uart_ready   : std_logic;
+  
+  -- ADC sample streamer UART signals
+  signal adc_uart_data    : std_logic_vector(7 downto 0);
+  signal adc_uart_valid   : std_logic;
+  signal adc_uart_ready   : std_logic;
+  
+  -- TDC monitor mode control
+  signal tdc_monitor_mode : std_logic := '0';  -- 0=ADC samples, 1=TDC monitor
+  
   -- UART RX command decoder
   signal uart_rx_data     : std_logic_vector(7 downto 0);
   signal uart_rx_valid    : std_logic;
@@ -177,7 +197,13 @@ begin
       sample_valid       => adc_sample_valid,
       -- Debug outputs (not monitored in production)
       debug_tdc_out      => open,
-      debug_tdc_valid    => open
+      debug_tdc_valid    => open,
+      -- TDC Monitor outputs (connected to UART streamer)
+      tdc_monitor_code   => tdc_mon_code,
+      tdc_monitor_center => tdc_mon_center,
+      tdc_monitor_diff   => tdc_mon_diff,
+      tdc_monitor_dac    => tdc_mon_dac,
+      tdc_monitor_valid  => tdc_mon_valid
     );
 
   -- ========================================================================
@@ -221,6 +247,10 @@ begin
               capture_start <= '1';
             when x"44" | x"64" =>  -- 'D' or 'd' = Dump
               capture_dump <= '1';
+            when x"54" | x"74" =>  -- 'T' or 't' = TDC monitor mode
+              tdc_monitor_mode <= '1';
+            when x"41" | x"61" =>  -- 'A' or 'a' = ADC sample mode
+              tdc_monitor_mode <= '0';
             when others =>
               null;
           end case;
@@ -276,6 +306,28 @@ begin
     dump_active    <= '0';
   end generate;
 
+  -- TDC monitor UART streamer
+  i_tdc_monitor_streamer : entity work.tdc_monitor_uart_streamer
+    generic map(
+      GC_TDC_WIDTH  => 16,
+      GC_ADC_WIDTH  => C_ADC_DATA_WIDTH,
+      GC_DECIMATION => 4096  -- Decimate 2MHz TDC rate to ~488 packets/s (fits 115200 baud)
+    )
+    port map(
+      clk                => sysclk_pd,
+      reset              => rst,
+      tdc_monitor_code   => tdc_mon_code,
+      tdc_monitor_center => tdc_mon_center,
+      tdc_monitor_diff   => tdc_mon_diff,
+      tdc_monitor_dac    => tdc_mon_dac,
+      tdc_monitor_valid  => tdc_mon_valid,
+      adc_data_out       => signed(adc_sample_data),
+      adc_data_valid     => adc_sample_valid,
+      uart_tx_data       => tdc_uart_data,
+      uart_tx_valid      => tdc_uart_valid,
+      uart_tx_ready      => tdc_uart_ready
+    );
+
   -- UART streamer for ADC samples (live or dump mode)
   i_uart_streamer : entity work.uart_sample_streamer
     generic map(
@@ -287,9 +339,19 @@ begin
       rst           => rst,
       sample_data   => streamer_data,
       sample_valid  => streamer_valid,
-      uart_tx_data  => uart_tx_data,
-      uart_tx_valid => uart_tx_valid,
-      uart_tx_ready => uart_tx_ready
+      uart_tx_data  => adc_uart_data,
+      uart_tx_valid => adc_uart_valid,
+      uart_tx_ready => adc_uart_ready
     );
+
+  -- ========================================================================
+  -- UART Mux: Select between ADC samples and TDC monitor
+  -- Command 'T' switches to TDC monitor mode
+  -- Command 'A' switches back to ADC sample mode
+  -- ========================================================================
+  uart_tx_data  <= tdc_uart_data  when tdc_monitor_mode = '1' else adc_uart_data;
+  uart_tx_valid <= tdc_uart_valid when tdc_monitor_mode = '1' else adc_uart_valid;
+  tdc_uart_ready <= uart_tx_ready when tdc_monitor_mode = '1' else '0';
+  adc_uart_ready <= uart_tx_ready when tdc_monitor_mode = '0' else '0';
 
 end architecture rtl;

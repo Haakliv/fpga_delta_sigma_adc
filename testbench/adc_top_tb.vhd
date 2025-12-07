@@ -518,48 +518,43 @@ begin
                 --
                 -- The crossing time Tcross varies with voltage:
                 --   Tcross = 150ns + GAIN * (Vp - Vn)
-                --   Range: 50ns to 400ns (after the initial transition)
+                --   Range: 20ns to 240ns (BEFORE DAC updates at 250ns falling edge)
                 -- ========================================================================
 
-                -- Determine final state based on voltage comparison (for delta-sigma)
+                -- Determine final state based on voltage comparison (NOT dac_out_bit!)
+                -- This is the delta-sigma comparator decision: Vp > Vn?
                 if v_verr > 0.0 then
-                    v_final := '1';     -- Vp > Vn: DAC should be HIGH
+                    v_final := '1';     -- Vp > Vn: comparator output should be HIGH
                 else
-                    v_final := '0';     -- Vp < Vn: DAC should be LOW
+                    v_final := '0';     -- Vp <= Vn: comparator output should be LOW
                 end if;
 
-                -- Calculate crossing time: 150ns (offset from 50ns) + gain * error
-                v_cross_ns := 150.0 + (C_GAIN_NS_V * v_verr);
+                -- Calculate crossing time from period start (EARLY, before DAC update at 250ns)
+                -- Base offset: 100ns (midpoint of measurement window)
+                -- Gain: ±80ns/V gives ±104ns range for ±1.3V full scale
+                -- Result range: 20ns to 240ns (always before DAC update)
+                v_cross_ns := 100.0 + (80.0 * v_verr);
 
-                -- Clamp to valid range (10ns to 350ns from the 50ns offset)
-                if v_cross_ns < 10.0 then
-                    v_cross_ns := 10.0;
-                elsif v_cross_ns > 350.0 then
-                    v_cross_ns := 350.0;
+                -- Clamp to valid range (must be > blanking window and < DAC update)
+                if v_cross_ns < 20.0 then
+                    v_cross_ns := 20.0;
+                elsif v_cross_ns > 240.0 then
+                    v_cross_ns := 240.0;
                 end if;
 
-                -- Absolute crossing time from period start
-                v_cross_time := (50.0 + v_cross_ns) * 1 ns;
-
-                -- Phase 1: Start with FINAL state (delta-sigma samples this)
-                pad_p <= v_final;
-                pad_n <= not v_final;
-
-                -- Wait 50ns for delta-sigma to sample the correct value
-                wait for 50 ns;
-
-                -- Phase 2: Transition to OPPOSITE (TDC arms on this change)
+                -- Pulse Generation:
+                -- 1. Start with opposite state (setup for transition)
+                --    Immediate at rising edge (0ns)
                 pad_p <= not v_final;
                 pad_n <= v_final;
 
-                -- Phase 3: Wait until crossing time, then transition back to FINAL
-                -- (TDC measures this transition)
-                wait for v_cross_ns * 1 ns;
+                -- 2. Scheduled transition to final state (measurement edge)
+                --    Happens at v_cross_ns after period start
+                --    TDC captures this transition BEFORE DAC updates
+                pad_p <= transport v_final after v_cross_ns * 1 ns;
+                pad_n <= transport not v_final after v_cross_ns * 1 ns;
 
-                pad_p <= v_final;
-                pad_n <= not v_final;
-
-                -- Wait for remainder of period
+                -- Wait for next period (Rising Edge)
                 wait until rising_edge(ref_clock);
             end if;
         end loop;
@@ -613,6 +608,44 @@ begin
     -- Test Runner
     -- ========================================================================
     p_main : process
+        -- Convert voltage (0.0-1.0 normalized) to expected Q15 value
+        -- Q15 maps linearly: 0mV -> -32768, 650mV -> 0, 1300mV -> +32767
+        -- So: Q15 = (V_normalized - 0.5) * 65536
+        -- Or: Q15 = (V_mV - 650) * 32768 / 650
+        function voltage_to_q15(v_normalized : real) return integer is
+            variable v_q15 : integer;
+        begin
+            -- v_normalized is 0.0 to 1.0, mapping to 0mV to 1300mV
+            -- Center is 0.5 (650mV) which maps to Q15 = 0
+            v_q15 := integer((v_normalized - 0.5) * 65536.0);
+            -- Saturate to Q15 range
+            if v_q15 > 32767 then
+                return 32767;
+            elsif v_q15 < -32768 then
+                return -32768;
+            else
+                return v_q15;
+            end if;
+        end function;
+        
+        -- Convert Q15 signed value to millivolts (for reporting only)
+        -- Formula: mV = (q_value * 650) / 32768 + 650
+        -- Q15: -32768 -> 0mV, 0 -> 650mV, +32767 -> 1300mV
+        function q_to_mv(q_value : integer) return integer is
+            variable v_scaled : integer;
+        begin
+            -- Scale: multiply by 650, divide by 32768 (2^15)
+            v_scaled := (q_value * 650) / 32768 + 650;
+            -- Saturate to 0..1300 mV range
+            if v_scaled < 0 then
+                return 0;
+            elsif v_scaled > 1300 then
+                return 1300;
+            else
+                return v_scaled;
+            end if;
+        end function;
+        
         -- Helper: wait for N sample_valid pulses (deterministic) with timeout and progress monitoring
         procedure wait_for_samples(signal   clk     : std_logic;
                                    signal   vld     : std_logic;
@@ -673,6 +706,13 @@ begin
             variable v_expected_mv  : integer;
             variable v_tolerance    : integer;
             variable v_error_mv     : integer;
+            variable v_min_mv       : integer;
+            variable v_max_mv       : integer;
+            variable v_avg_q        : integer;
+            -- Q-format comparison variables
+            variable v_expected_q   : integer;  -- Expected Q15 value
+            variable v_tolerance_q  : integer;  -- Tolerance in Q15 units
+            variable v_error_q      : integer;  -- Error in Q15 units
         begin
             -- Wait for samples to be collected
             wait_for_samples(clk, vld, N, timeout);
@@ -690,46 +730,64 @@ begin
                 check(false,
                       "OUTPUT STUCK AT CONSTANT in " & test_name & ": " & "All " & integer'image(sample_count_sig) & " samples equal " & integer'image(sample_min_value) & ". " & "No dynamic range detected for AC signal! Check if: " & "1) Loop is saturated or stuck " & "2) CIC decimation removing all signal variations");
             elsif GC_TB_SIGNAL_TYPE = 1 then
-                -- DC INPUT TEST: Verify voltage accuracy
-                v_variation_mv := sample_max_value - sample_min_value;
-                v_mean_mv      := sample_sum_value / sample_count_sig; -- TRUE average of all samples
+                -- DC INPUT TEST: Verify voltage accuracy in Q15 format
+                -- NOTE: All comparisons done in Q15 format for direct HW correlation
+                v_avg_q := sample_sum_value / sample_count_sig;  -- Average in Q15
 
-                -- Expected voltage = GC_TB_DC_LEVEL × 1300mV (full scale)
-                v_expected_mv := integer(GC_TB_DC_LEVEL * 1300.0);
-                -- TDC ADC has multi-bit resolution: ±10mV tolerance
-                -- RC ADC has simpler 1-bit ΔΣ with behavioral comparator model: ±25mV tolerance
+                -- Calculate expected Q15 value from DC level
+                -- voltage_to_q15 maps: 0.0 -> -32768, 0.5 -> 0, 1.0 -> +32767
+                v_expected_q := voltage_to_q15(GC_TB_DC_LEVEL);
+                
+                -- Define tolerance in Q15 units
+                -- TDC ADC: ±10mV corresponds to ±503 Q15 units (10 * 32768 / 650)
+                -- RC ADC: ±25mV corresponds to ±1260 Q15 units (25 * 32768 / 650)
                 if GC_ADC_TYPE = "rc" then
-                    v_tolerance := 25;  -- ±25mV for RC ADC (accounts for comparator model inaccuracy)
+                    v_tolerance_q := 1260;  -- ±25mV equivalent in Q15
                 else
-                    v_tolerance := 10;  -- ±10mV for TDC ADC (multi-bit path)
+                    v_tolerance_q := 503;   -- ±10mV equivalent in Q15
                 end if;
-                v_error_mv := abs (v_mean_mv - v_expected_mv);
+                v_error_q := abs(v_avg_q - v_expected_q);
+                
+                -- Convert to mV for reporting only (not for comparison)
+                v_min_mv       := q_to_mv(sample_min_value);
+                v_max_mv       := q_to_mv(sample_max_value);
+                v_mean_mv      := q_to_mv(v_avg_q);
+                v_expected_mv  := integer(GC_TB_DC_LEVEL * 1300.0);
+                v_variation_mv := v_max_mv - v_min_mv;
+                v_error_mv     := abs(v_mean_mv - v_expected_mv);
 
-                info("DC INPUT TEST: Output range " & integer'image(sample_min_value) & "-" & integer'image(sample_max_value) & "mV (variation=" & integer'image(v_variation_mv) & "mV, avg=" & integer'image(v_mean_mv) & "mV from " & integer'image(sample_count_sig) & " samples)");
-                info("DC VOLTAGE ACCURACY: Expected=" & integer'image(v_expected_mv) & "mV, Measured=" & integer'image(v_mean_mv) & "mV, Error=" & integer'image(v_error_mv) & "mV");
+                -- Report both Q-format and mV values
+                info("DC INPUT TEST (Q15): Raw Q15 range " & integer'image(sample_min_value) & " to " & integer'image(sample_max_value) & " (avg=" & integer'image(v_avg_q) & " from " & integer'image(sample_count_sig) & " samples)");
+                info("DC INPUT TEST (mV):  Converted range " & integer'image(v_min_mv) & "-" & integer'image(v_max_mv) & "mV (variation=" & integer'image(v_variation_mv) & "mV, avg=" & integer'image(v_mean_mv) & "mV)");
+                info("DC ACCURACY (Q15): Expected=" & integer'image(v_expected_q) & ", Measured=" & integer'image(v_avg_q) & ", Error=" & integer'image(v_error_q) & " (tolerance=±" & integer'image(v_tolerance_q) & ")");
+                info("DC ACCURACY (mV):  Expected=" & integer'image(v_expected_mv) & "mV, Measured=" & integer'image(v_mean_mv) & "mV, Error=" & integer'image(v_error_mv) & "mV");
 
-                -- Check voltage accuracy
-                check(v_error_mv <= v_tolerance,
-                      "DC VOLTAGE ERROR EXCEEDS TOLERANCE in " & test_name & ": " & "Expected " & integer'image(v_expected_mv) & "mV (±" & integer'image(v_tolerance) & "mV), " & "Measured " & integer'image(v_mean_mv) & "mV, " & "Error = " & integer'image(v_error_mv) & "mV. " & "Input voltage: " & integer'image(integer(GC_TB_DC_LEVEL * 1300.0)) & "mV.");
+                -- Check voltage accuracy in Q15 format
+                check(v_error_q <= v_tolerance_q,
+                      "DC VOLTAGE ERROR EXCEEDS TOLERANCE in " & test_name & ": " & "Expected Q15=" & integer'image(v_expected_q) & " (±" & integer'image(v_tolerance_q) & "), " & "Measured Q15=" & integer'image(v_avg_q) & ", " & "Error = " & integer'image(v_error_q) & ". " & "Input voltage: " & integer'image(integer(GC_TB_DC_LEVEL * 1300.0)) & "mV.");
 
-                info("DC VOLTAGE ACCURACY CHECK PASSED: Error " & integer'image(v_error_mv) & "mV within ±" & integer'image(v_tolerance) & "mV tolerance");
+                info("DC VOLTAGE ACCURACY CHECK PASSED: Error Q15=" & integer'image(v_error_q) & " within ±" & integer'image(v_tolerance_q) & " tolerance");
             else
                 -- For AC signals (sine, square, ramp), just verify dynamic range exists
                 -- The ADC outputs absolute voltage (0-1200mV), not differential amplitude
                 -- So for a 0.25 amplitude sine at 0.5 DC offset (300mV swing centered at 600mV),
                 -- the output range will be close to full scale as the loop tracks the input
-                v_mean_mv := sample_max_value - sample_min_value; -- Measured peak-to-peak
+                -- NOTE: sample_min_value/max_value are in Q15 format, convert to mV
+                v_min_mv       := q_to_mv(sample_min_value);
+                v_max_mv       := q_to_mv(sample_max_value);
+                v_variation_mv := v_max_mv - v_min_mv; -- Peak-to-peak in mV
 
-                info("AC INPUT TEST: Peak-to-peak range = " & integer'image(v_mean_mv) & " mV");
+                info("AC INPUT TEST (Q15): Raw Q15 range " & integer'image(sample_min_value) & " to " & integer'image(sample_max_value));
+                info("AC INPUT TEST (mV):  Peak-to-peak range = " & integer'image(v_variation_mv) & " mV (" & integer'image(v_min_mv) & "-" & integer'image(v_max_mv) & "mV)");
 
                 -- Just verify we have reasonable dynamic range (>100mV) to confirm loop is tracking
-                check(v_mean_mv > 100,
-                      "AC OUTPUT HAS NO DYNAMIC RANGE in " & test_name & ": " & "Only " & integer'image(v_mean_mv) & "mV p-p detected " & "(AMPLITUDE=" & real'image(GC_TB_AMPLITUDE) & ", FREQUENCY=" & real'image(GC_TB_FREQUENCY_HZ) & "Hz). " & "Delta-Sigma loop may be stuck!");
+                check(v_variation_mv > 100,
+                      "AC OUTPUT HAS NO DYNAMIC RANGE in " & test_name & ": " & "Only " & integer'image(v_variation_mv) & "mV p-p detected " & "(AMPLITUDE=" & real'image(GC_TB_AMPLITUDE) & ", FREQUENCY=" & real'image(GC_TB_FREQUENCY_HZ) & "Hz). " & "Delta-Sigma loop may be stuck!");
 
-                info("AC VOLTAGE TRACKING CHECK PASSED: Measured " & integer'image(v_mean_mv) & "mV p-p dynamic range");
+                info("AC VOLTAGE TRACKING CHECK PASSED: Measured " & integer'image(v_variation_mv) & "mV p-p dynamic range");
             end if;
 
-            info("OUTPUT RANGE CHECK PASSED for " & test_name & ": min=" & integer'image(sample_min_value) & ", max=" & integer'image(sample_max_value) & ", count=" & integer'image(sample_count_sig));
+            info("OUTPUT RANGE CHECK PASSED for " & test_name & ": Q15 min=" & integer'image(sample_min_value) & ", max=" & integer'image(sample_max_value) & ", count=" & integer'image(sample_count_sig));
         end procedure;
 
     begin

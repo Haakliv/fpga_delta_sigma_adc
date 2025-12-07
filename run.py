@@ -208,7 +208,7 @@ vsim_flags = [
     "-L", "altera_lnsim_ver",
 ]
 if not fast_mode:
-    vsim_flags.insert(1, "-voptargs=+acc")  # Insert after "-t", "ps"
+    vsim_flags.append("-voptargs=+acc")  # Append to end
 vu.set_sim_option("modelsim.vsim_flags", vsim_flags)
 
 if enable_cov:

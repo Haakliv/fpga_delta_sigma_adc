@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""UART monitor for streaming ADC samples from the FPGA design."""
+"""UART monitor for streaming ADC samples from the FPGA design.
+
+The FPGA outputs Q15 signed values: [-32768, +32767] maps to [-1.0, +1.0)
+We convert to millivolts using: mV = (q_value * 650) / 32768 + 650
+This gives a range of 0-1300mV.
+"""
 
 from __future__ import annotations
 
@@ -19,19 +24,12 @@ except ImportError:
 ADC_BITS = 16
 ADC_MAX_VALUE = (1 << ADC_BITS) - 1
 
-# Calibration constants (to be determined empirically)
-# Based on user measurements with OLD firmware (shift=37):
-#   110mV → -968 counts
-#   10mV step → 4 count change
-# With NEW firmware (shift=33), counts are multiplied by 2^4 = 16
-# So we expect: 110mV → -15,488 counts theoretically
-# But need actual calibration points from user
-
-# For now, use a placeholder calibration
-# USER: Please provide two calibration points:
-#   1. What voltage gives what count?
-#   2. Another voltage and its count?
-CALIBRATION_ENABLED = False
+# Voltage scaling for LVDS DAC swing
+# FPGA I/O bank voltage is 1.3V. Must match VHDL to_millivolts:
+# Q15 bipolar: '0' → -1 (0% duty, 0V avg), '1' → +1 (100% duty, ~1.3V avg)
+# Q15: -32768 → 0mV, 0 → 650mV (50% duty), +32767 → 1300mV (100% duty)
+V_CENTER_MV = 650       # 50% duty → 650mV (comparator center with 1.3V I/O)
+V_HALF_SCALE_MV = 650   # Full 0-1300mV range
 
 
 def find_uart_port() -> str:
@@ -46,7 +44,7 @@ def find_uart_port() -> str:
 
 
 def decode_sample(line: str) -> Optional[int]:
-    """Decode an ASCII hex string into a signed integer sample value."""
+    """Decode an ASCII hex string into a signed integer sample value (Q15 format)."""
     token = line.strip()
     if not token:
         return None
@@ -62,56 +60,49 @@ def decode_sample(line: str) -> Optional[int]:
     if value < 0 or value > ADC_MAX_VALUE:
         return None
 
-    # Convert to signed 16-bit
+    # Convert to signed 16-bit (Q15 format)
     if value >= (1 << (ADC_BITS - 1)):
         value -= (1 << ADC_BITS)
 
     return value
 
 
-def sample_to_voltage(sample: int) -> float:
-    """Convert a signed ADC sample into a voltage.
+def q15_to_millivolts(q_value: int) -> float:
+    """Convert a Q15 signed value to millivolts.
     
-    The FPGA outputs mv_code which is already in millivolts (0-1300mV range).
-    We just need to convert mV to V by dividing by 1000.
+    LVDS DAC swing: 0V to 1.3V typical (RC filter time constant: 10kΩ × 1nF = 10µs)
+    Formula: mV = (q_value * V_HALF_SCALE_MV) / 32768 + V_CENTER_MV
     
-    Note: sample is a signed 16-bit value, but mv_code is unsigned 0-1300.
-    If sample appears negative, it's because the unsigned value > 32767.
+    Q15 mapping: -32768 → 0mV (0% duty), 0 → 650mV (50% duty), +32767 → 1300mV (100% duty)
+    Comparator center: 0.65V (explains nonlinearity near 0.6V input)
     """
-    # mv_code is output as unsigned 0-1300
-    # But sample_to_voltage receives it as signed
-    # Values > 32767 wrap to negative - shouldn't happen for mv_code (max 1300)
-    
-    # Direct mV to V conversion
-    voltage_v = sample / 1000.0
-    
-    return voltage_v
-
-
-def send_mmio_write(ser: serial.Serial, addr: int, value: int) -> None:
-    """Send MMIO write command: 'W <addr> <value>\n'"""
-    cmd = f"W {addr} {value}\n"
-    ser.write(cmd.encode('ascii'))
-    print(f"Sent MMIO write: addr={addr} value=0x{value:08X}")
+    mv = (q_value * V_HALF_SCALE_MV) / 32768 + V_CENTER_MV
+    # Saturate to valid range
+    v_min = V_CENTER_MV - V_HALF_SCALE_MV
+    v_max = V_CENTER_MV + V_HALF_SCALE_MV
+    if mv < v_min:
+        mv = v_min
+    elif mv > v_max:
+        mv = v_max
+    return mv
 
 
 def main() -> None:
     port = find_uart_port()
     print(f"Connecting to {port} at 115200 baud...")
-    print("=" * 70)
-    print("MMIO Write Commands:")
-    print("  Send: W <addr> <value>")
-    print("  Example: W 28 1  (Set comparator polarity inversion)")
-    print("  Addr 27: Coarse bias (0-15)")
-    print("  Addr 28: Comparator invert (0=normal, 1=inverted)")
-    print("=" * 70)
+    print("=" * 80)
+    print("ADC Monitor - Q15 Format with mV Conversion")
+    print("=" * 80)
+    print("FPGA outputs Q15 signed values: [-32768, +32767] -> [-1.0, +1.0)")
+    print(f"Conversion: mV = (Q15 * {V_HALF_SCALE_MV}) / 32768 + {V_CENTER_MV}")
+    print(f"Range: {V_CENTER_MV - V_HALF_SCALE_MV}mV to {V_CENTER_MV + V_HALF_SCALE_MV}mV")
+    print("-" * 80)
 
     try:
         with serial.Serial(port, 115200, timeout=1) as ser:
             print("Connected! Waiting for hex samples from FPGA...")
-            print(f"ADC configuration: {ADC_BITS}-bit output")
-            print("Output format: mv_code (0-1300mV) → Voltage in V")
-            print("-" * 60)
+            print(f"{'Time':>10} | {'Sample#':>8} | {'Hex':>8} | {'Q15':>8} | {'mV':>10} | {'V':>10}")
+            print("-" * 80)
 
             sample_count = 0
             while True:
@@ -119,18 +110,21 @@ def main() -> None:
                 if not raw_line:
                     continue
 
-                sample = decode_sample(raw_line)
-                if sample is None:
+                q_value = decode_sample(raw_line)
+                if q_value is None:
                     # Ignore non-sample lines silently
                     continue
 
-                voltage = sample_to_voltage(sample)
+                mv = q15_to_millivolts(q_value)
+                voltage_v = mv / 1000.0
                 timestamp = time.strftime("%H:%M:%S")
-                # Show hex as unsigned, decimal as signed
-                hex_val = sample if sample >= 0 else (1 << ADC_BITS) + sample
+                
+                # Show hex as unsigned
+                hex_val = q_value if q_value >= 0 else (1 << ADC_BITS) + q_value
+                
                 print(
-                    f"[{timestamp}] Sample {sample_count:06d}: 0x{hex_val:04X} "
-                    f"({sample:6d}) -> {voltage:.6f} V"
+                    f"{timestamp:>10} | {sample_count:>8} | 0x{hex_val:04X} | {q_value:>8} | "
+                    f"{mv:>10.2f} | {voltage_v:>10.6f}"
                 )
                 sample_count += 1
 

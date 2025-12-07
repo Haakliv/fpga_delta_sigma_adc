@@ -46,6 +46,7 @@ set_global_assignment -name PWRMGT_VOLTAGE_OUTPUT_FORMAT "LINEAR FORMAT"
 set_global_assignment -name PWRMGT_LINEAR_FORMAT_N "-12"
 set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
 set_global_assignment -name MAX_CORE_JUNCTION_TEMP 100
+set_global_assignment -name VHDL_FILE sources/tdc_monitor_uart_streamer.vhd
 set_global_assignment -name SDC_FILE sources/axe5000_top.sdc
 set_global_assignment -name VHDL_FILE sources/tdc_quantizer.vhd
 set_global_assignment -name VHDL_FILE sources/tdc_adc_top.vhd

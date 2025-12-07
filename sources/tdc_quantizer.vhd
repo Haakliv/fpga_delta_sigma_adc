@@ -106,7 +106,9 @@ architecture rtl of tdc_quantizer is
   signal analog_sync         : std_logic_vector(2 downto 0) := (others => '0');
   signal analog_stop_mark    : std_logic                    := '0';
   signal stop_level_at_start : std_logic                    := '0';
-  signal edge_inhibit        : unsigned(1 downto 0)         := (others => '0');
+  signal edge_inhibit        : unsigned(3 downto 0)         := (others => '0');
+  signal inhibit_just_ended  : std_logic                    := '0'; -- Flag: capture reference level on next cycle
+  signal level_at_start_pulse : std_logic                   := '0'; -- Comparator state at start pulse (for inhibit check)
 
   -- ========================================================================
   -- CDC Attributes for Synchronizers
@@ -167,12 +169,15 @@ architecture rtl of tdc_quantizer is
   signal calib_mode_value : integer range 0 to 255 := 0; -- Running mode (bucket with max count)
   signal calib_searching  : std_logic              := '0'; -- '1' when searching for mode
 
-  -- Pipeline registers to break histogram read-modify-write timing path (3-stage pipeline for timing)
+  -- Pipeline registers to break histogram read-modify-write timing path (4-stage pipeline for timing)
   signal calib_hist_idx_d1    : integer range 0 to 255 := 0; -- Stage 1: Captured index
   signal calib_hist_value_d1  : unsigned(3 downto 0)   := (others => '0'); -- Stage 1: Read value from histogram
   signal calib_hist_idx_d2    : integer range 0 to 255 := 0; -- Stage 2: Index
   signal calib_hist_value_d2  : unsigned(3 downto 0)   := (others => '0'); -- Stage 2: Value
   signal calib_hist_update_d2 : std_logic              := '0'; -- Stage 2: Update enable
+  signal calib_hist_idx_d3    : integer range 0 to 255 := 0; -- Stage 3: Index
+  signal calib_hist_value_d3  : unsigned(3 downto 0)   := (others => '0'); -- Stage 3: Incremented value
+  signal calib_hist_update_d3 : std_logic              := '0'; -- Stage 3: Update enable
 
   -- Pipeline registers to break search comparison timing path
   signal calib_hist_read_d1  : unsigned(3 downto 0)   := (others => '0'); -- Histogram value read for comparison
@@ -305,7 +310,8 @@ begin
       -- This prevents race condition where same-cycle stop would prevent arming
       if start_pulse = '1' then
         armed               <= '1';     -- Arm on Start (takes priority over same-cycle stop)
-        stop_level_at_start <= analog_sync(2); -- Remember LVDS level at Start for transition detection
+        -- NOTE: stop_level_at_start is now captured in p_stop_sync AFTER inhibit clears
+        -- This fixes edge detection when comparator transitions during inhibit period
         -- Debug: Report every 20th start pulse to show TDC is receiving reference clocks
         v_start_count       := v_start_count + 1;
         if GC_SIM and (v_start_count <= 5 or (v_start_count mod 5000) = 0) then
@@ -328,23 +334,47 @@ begin
       -- 3-FF synchronizer for async LVDS input (matches ref path 3-FF depth)
       analog_sync <= analog_sync(1 downto 0) & analog_crossing;
 
-      -- Clear inhibit on every Start (also done in p_arm_control, but safe to duplicate)
+      -- Default: clear the "just ended" flag
+      inhibit_just_ended <= '0';
+
+      -- Set inhibit on every Start
       if start_pulse = '1' then
-        edge_inhibit <= (others => '0');
+        edge_inhibit <= to_unsigned(6, edge_inhibit'length); -- Blank for 6 cycles (15ns) to mask DAC glitch
+        level_at_start_pulse <= analog_sync(2);              -- Capture state immediately (before inhibit)
+      elsif edge_inhibit > to_unsigned(0, edge_inhibit'length) then
+        -- Decrement inhibit counter
+        edge_inhibit <= edge_inhibit - 1;
+        -- When transitioning from 1 to 0, signal that inhibit just ended
+        if edge_inhibit = to_unsigned(1, edge_inhibit'length) then
+          inhibit_just_ended <= '1';
+        end if;
       end if;
 
-      -- Edge detection: first transition from Start level (either rising or falling)
-      -- Compare current level to level captured at Start, not to previous cycle
-      -- Only trigger when: level changed from Start + armed + no inhibit
-      if (analog_sync(2) /= stop_level_at_start) and (armed = '1') and (edge_inhibit = to_unsigned(0, edge_inhibit'length)) then
+      -- CRITICAL FIX: Capture reference level AFTER inhibit clears
+      -- This ensures we capture the current comparator state when we actually
+      -- start looking for edges, not 6 cycles earlier when it might be different.
+      if inhibit_just_ended = '1' then
+        -- Check if edge occurred INSIDE inhibit window
+        if analog_sync(2) /= level_at_start_pulse then
+            -- Fast edge detected! It happened while we were blinded.
+            -- Treat as valid stop immediately.
+            analog_stop_mark <= '1';
+            edge_inhibit     <= to_unsigned(2, edge_inhibit'length); -- Inhibit for 2 cycles
+        else
+            -- No edge during window, or glitch returned to baseline.
+            -- Normal operation: update baseline for edge detector
+            stop_level_at_start <= analog_sync(2);
+        end if;
+      end if;
+
+      -- Edge detection: first transition from captured reference level
+      -- Only trigger when: level changed from reference + armed + no inhibit
+      if (analog_sync(2) /= stop_level_at_start) and (armed = '1') and (edge_inhibit = to_unsigned(0, edge_inhibit'length)) and (inhibit_just_ended = '0') then
         analog_stop_mark <= '1';
         edge_inhibit     <= to_unsigned(2, edge_inhibit'length); -- Inhibit for 2 cycles
-      else
+      elsif inhibit_just_ended = '0' then
+        -- Clear pulse only if we didn't just set it in the inhibit_just_ended block
         analog_stop_mark <= '0';
-        -- Decrement inhibit counter (saturates at 0)
-        if edge_inhibit > to_unsigned(0, edge_inhibit'length) then
-          edge_inhibit <= edge_inhibit - 1;
-        end if;
       end if;
     end if;
   end process;
@@ -841,9 +871,18 @@ begin
             calib_hist_update_d2 <= '0';
           end if;
 
-          -- Pipeline stage 3: Increment and write back
+          -- Pipeline stage 3: Increment
+          calib_hist_idx_d3   <= calib_hist_idx_d2;
+          calib_hist_update_d3 <= calib_hist_update_d2;
           if calib_hist_update_d2 = '1' and calib_hist_value_d2 < 15 then
-            calib_histogram(calib_hist_idx_d2) <= calib_hist_value_d2 + 1;
+            calib_hist_value_d3 <= calib_hist_value_d2 + 1;
+          else
+            calib_hist_value_d3 <= calib_hist_value_d2; -- Pass through unchanged
+          end if;
+
+          -- Pipeline stage 4: Write back
+          if calib_hist_update_d3 = '1' then
+            calib_histogram(calib_hist_idx_d3) <= calib_hist_value_d3;
           end if;
 
           -- PHASE 2: After 16 samples, wait two cycles for pipeline flush, then start search
@@ -1162,7 +1201,7 @@ begin
   p_interval_stage3 : process(clk_tdc)
     constant C_ROUND_BIT   : integer                             := C_TIME_FP_BITS - GC_OUTPUT_WIDTH - 1;
     constant C_ROUND_CONST : signed(C_TIME_FP_BITS - 1 downto 0) := to_signed(2 ** C_ROUND_BIT, C_TIME_FP_BITS);
-    constant C_OVF_TOL     : integer                             := 100 * (2 ** C_FINE_FRAC_BITS);
+    constant C_OVF_TOL     : integer                             := 300 * (2 ** C_FINE_FRAC_BITS);
     variable v_ovf_check   : boolean;
   begin
     if rising_edge(clk_tdc) then
