@@ -1,0 +1,3 @@
+# TCL commands history
+# Thu Sep 11 17:31:31 2025
+ssv_tcl_open_attaching_singleton_window -attaching_window_app_name "Pin Planner" -attach_to_frame [ssv_active_ss_frame]

@@ -1,0 +1,292 @@
+# FPGA Project .gitignore
+
+# Intel/Altera Quartus generated files
+*.rpt
+*.summary
+*.pin
+*.sof
+*.pof
+*.jdi
+*.sld
+*.sldtmp
+*.done
+*.cdf
+*.qws
+*.bak
+*.qarlog
+*.qmsg
+*.smsg
+*.jic
+*.rbf
+*.ttf
+*.pof
+*.svf
+*.jam
+*.map
+*.fit.*
+*.asm.*
+*.sta.*
+*.syn.*
+*.drc.*
+*.flow.*
+*.tlg.*
+*.tq.*
+*.sdc_constraints.*
+board.info
+
+# Platform Designer legacy files and generated TCL
+*.qsys.legacy
+*_hw.tcl
+
+# Quartus database and temporary files
+/qdb/
+/db/
+/incremental_db/
+/simulation/
+/greybox_tmp/
+/hc_output/
+/hps_isw_handoff/
+*.qtl
+*.qdf
+
+# Quartus save files and user data
+*_save_*.json
+*_user_*.txt
+
+# IP and system files (keep source .qsys and .ip but ignore generated)
+*.sopcinfo
+*.html
+*.bsf
+*.cmp
+*.qip
+*.regmap
+*.xml
+*_generation.rpt
+*_bb.v
+*_inst.v
+*_inst.vhd
+*.qgsynthc
+
+# Generated IP component directories and files
+/adc_system/altera_*/
+/adc_system/software/
+/adc_system/synth/
+/adc_system/*_bb.v
+/adc_system/*_inst.v
+/adc_system/*_inst.vhd
+/adc_system/*.sopcinfo
+/adc_system/*.html
+/adc_system/*.qip
+
+# IP component management - keep only source files
+# Ignore all IP component directories, then whitelist source files
+/ip/adc_system/*/
+!/ip/adc_system/*.ip
+
+# Custom PWM component - keep source VHDL and TCL, ignore generated
+/ip/custom_pwm/custom_pwm_generation.rpt
+/ip/custom_pwm/serv_req_info.txt
+# Generated files in IP component root directories  
+/ip/adc_system/*/*.cmp
+/ip/adc_system/*/*.html
+/ip/adc_system/*/*.qgsynthc
+/ip/adc_system/*/*.qip
+/ip/adc_system/*/*.regmap
+/ip/adc_system/*/*.sopcinfo
+/ip/adc_system/*/*.xml
+/ip/adc_system/*/*_bb.v
+/ip/adc_system/*/*_inst.v
+/ip/adc_system/*/*_inst.vhd
+/ip/adc_system/*/*_generation.rpt
+# Generated files directly in adc_system directory
+/adc_system/*.cmp
+/adc_system/*.html
+/adc_system/*.qgsynthc
+/adc_system/*.qip
+/adc_system/*.regmap
+/adc_system/*.sopcinfo
+/adc_system/*.xml
+/adc_system/*_bb.v
+/adc_system/*_inst.v
+/adc_system/*_inst.vhd
+/adc_system/*_generation.rpt
+# Custom PWM generated files
+/ip/custom_pwm/*_generation.rpt
+/ip/custom_pwm/serv_req_info.txt
+
+# Build directories and files
+/build/
+/software/build/
+/software/bsp/
+/software/app/build/
+*.elf
+*.objdump
+*.hex
+onchip_memory.hex
+demo.hex
+*.a
+*.o
+*.so
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+.cmake/
+*_targets.cmake
+*Config.cmake
+*ConfigVersion.cmake
+*Exports.cmake
+
+# GDB and debugging files
+gdbopxdriscv.ini
+*.gdb
+# Note: .gdbinit files are kept as they contain project-specific debug settings
+
+# DNI (Do Not Include) files - Intel tool generated
+/dni/
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*~
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.temp_vhd
+*.vhd.temp
+
+# IDE and editor files (keep project structure but ignore user settings)
+.vscode/settings.json
+.vscode/launch.json
+.vscode/c_cpp_properties.json
+.vscode/*.log
+.idea/
+*.sublime-*
+
+# Eclipse CDT files (auto-generated)
+.cproject
+.project
+
+# Sigasi IDE files
+.library_mapping.xml
+.settings/
+
+# Log files
+*.log
+*.qarlog
+*.qmsg
+*.smsg
+IpUpgradeLog.xml
+serv_req_info.txt
+
+# Simulation files and ModelSim/QuestaSim work directory
+/work/
+/testbench/work/
+/testbench/transcript
+/testbench/vsim.wlf
+/testbench/*.vcd
+/testbench/*.ghw
+*.mpf
+*.mti
+*_info
+*.qdb
+*.qpg
+*.qtl
+
+# VUnit generated files
+/vunit_out/
+test_results.xml
+wave.ghw
+*.cf
+*.o
+
+# Python cache and bytecode files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Python virtual environments
+adc_monitor_env/
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Python distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Temporary clearbox files
+/tmp-clearbox/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.lnk
+
+# Keep important project files but ignore user-specific and temporary files
+!*.qpf
+!*.qsf
+!*.sdc
+!*.v
+!*.vhd
+!*.vhdl
+!*.sv
+!*.svh
+!*.c
+!*.h
+!*.cpp
+!*.hpp
+# Include source TCL files but exclude generated _hw.tcl files  
+!*.tcl
+*_hw.tcl
+!*.qsys
+!CMakeLists.txt
+!README.md
+!*.pdf
+!.vscode/cmake-kits.json
+!.vscode/tasks.json
+!requirements.txt
+!run.py
+
+# Override whitelist for auto-generated Platform Designer files
+*_inst.v
+*_inst.vhd
+*_bb.v
+/adc_system/adc_system_inst.vhd
+/adc_system/adc_system_bb.v
+/cov_html
+coverage_data.ucdb
+/.copilot-instructions.md
+adc.stp
+axe5000_top_synthesized_save_view.txt

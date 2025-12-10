@@ -1,0 +1,10 @@
+# FPGA Testing
+vunit_hdl>=4.7.0
+colorama>=0.4.0
+
+# ADC Monitor
+pyserial>=3.5
+
+# Optional: For advanced plotting
+matplotlib>=3.5.0
+numpy>=1.21.0
