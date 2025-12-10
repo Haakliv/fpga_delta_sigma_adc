@@ -10,9 +10,9 @@ use ieee.numeric_std.all;
 
 entity axe5000_top is
   generic(
-    -- ADC Decimation: 2MHz / 384 ≈ 5208 S/s
+    -- ADC Decimation: 50MHz / 25600 ≈ 1953 S/s
     -- ASCII mode: 115200/10/6 = 1920 S/s max, so use higher decimation
-    GC_ADC_DECIMATION  : positive := 1024;  -- Decimation for ~1953 S/s (fits ASCII mode)
+    GC_ADC_DECIMATION  : positive := 25600;  -- Decimation for ~1953 S/s (fits ASCII mode)
     GC_UART_BINARY     : boolean  := false; -- false=ASCII hex (human readable)
     GC_CAPTURE_DEPTH   : positive := 4096;  -- Burst capture buffer depth
     GC_CAPTURE_ENABLED : boolean  := false  -- Disable burst capture - just stream continuously
@@ -30,7 +30,6 @@ entity axe5000_top is
 
     -- Debug
     TEST_PIN     : out std_logic;
-    LED1         : out std_logic;       -- Debug LED (TDC valid indicator)
     USER_BTN     : in  std_logic;       -- Active low reset
     -- Optional trigger (directly triggers capture when GC_CAPTURE_ENABLED)
     TRIGGER_IN   : in  std_logic := '0' -- Active high trigger for capture start
@@ -44,7 +43,7 @@ architecture rtl of axe5000_top is
 
   signal sysclk_pd     : std_logic;     -- 100 MHz system clock from PLL
   signal clk_tdc_400m  : std_logic;     -- 400 MHz TDC clock from PLL
-  signal clk_ref_2m    : std_logic;     -- 2 MHz reference clock from PLL
+  signal clk_ref_2m    : std_logic;     -- 50 MHz reference clock from PLL
   signal rst_n_from_pd : std_logic;     -- Active-low reset from Platform Designer reset bridge
   signal rst           : std_logic;     -- Active-high reset for RTL modules
 
@@ -91,7 +90,10 @@ architecture rtl of axe5000_top is
   signal adc_uart_ready   : std_logic;
   
   -- TDC monitor mode control
-  signal tdc_monitor_mode : std_logic := '0';  -- 0=ADC samples, 1=TDC monitor
+  signal tdc_monitor_mode    : std_logic := '0';  -- 0=ADC samples, 1=TDC monitor
+  signal disable_tdc_contrib : std_logic := '0';  -- 0=TDC enabled, 1=TDC disabled (CIC-only)
+  signal disable_eq_filter   : std_logic := '0';  -- 0=EQ enabled, 1=EQ bypassed
+  signal disable_lp_filter   : std_logic := '0';  -- 0=LP enabled, 1=LP bypassed
   
   -- UART RX command decoder
   signal uart_rx_data     : std_logic_vector(7 downto 0);
@@ -136,7 +138,7 @@ begin
 
   -- Debug and DAC outputs
   TEST_PIN     <= adc_sample_valid;     -- Sample valid pulse
-  LED1         <= capture_active or dump_active; -- LED shows capture/dump activity
+  -- LED1 removed - not needed in design
   FEEDBACK_OUT <= w_dac_bit;            -- DAC output with external RC filter
 
   i_niosv : adc_system
@@ -203,7 +205,11 @@ begin
       tdc_monitor_center => tdc_mon_center,
       tdc_monitor_diff   => tdc_mon_diff,
       tdc_monitor_dac    => tdc_mon_dac,
-      tdc_monitor_valid  => tdc_mon_valid
+      tdc_monitor_valid  => tdc_mon_valid,
+      -- Runtime control
+      disable_tdc_contrib => disable_tdc_contrib,
+      disable_eq_filter   => disable_eq_filter,
+      disable_lp_filter   => disable_lp_filter
     );
 
   -- ========================================================================
@@ -251,6 +257,12 @@ begin
               tdc_monitor_mode <= '1';
             when x"41" | x"61" =>  -- 'A' or 'a' = ADC sample mode
               tdc_monitor_mode <= '0';
+            when x"58" | x"78" =>  -- 'X' or 'x' = Toggle TDC contribution
+              disable_tdc_contrib <= not disable_tdc_contrib;
+            when x"45" | x"65" =>  -- 'E' or 'e' = Toggle EQ filter
+              disable_eq_filter <= not disable_eq_filter;
+            when x"4C" | x"6C" =>  -- 'L' or 'l' = Toggle LP filter
+              disable_lp_filter <= not disable_lp_filter;
             when others =>
               null;
           end case;
@@ -311,7 +323,7 @@ begin
     generic map(
       GC_TDC_WIDTH  => 16,
       GC_ADC_WIDTH  => C_ADC_DATA_WIDTH,
-      GC_DECIMATION => 4096  -- Decimate 2MHz TDC rate to ~488 packets/s (fits 115200 baud)
+      GC_DECIMATION => 102400  -- Decimate 50MHz TDC rate to ~488 packets/s (fits 115200 baud)
     )
     port map(
       clk                => sysclk_pd,

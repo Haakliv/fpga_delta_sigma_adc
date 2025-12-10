@@ -37,10 +37,16 @@ except ImportError:
     print("Then: pip install pyserial")
     exit(1)
 
-# Voltage scaling (must match VHDL to_millivolts in dsp_utils_pkg)
-# FPGA I/O bank voltage is 1.3V, so map Q15 to 0-1300 mV
+# Voltage scaling for FPGA I/O bank (1.3V)
+# Q15 bipolar: '0' -> -1 (0% duty, 0V avg), '1' -> +1 (100% duty, ~1.3V avg)
+# Map Q15 to 0-1300 mV range
 V_CENTER_MV = 650
 V_HALF_SCALE_MV = 650
+
+# Comparator offset calibration
+# The LVDS comparator has inherent offset - feedback must be ~50mV higher than
+# input for the comparator to see equality. Subtract this offset to show true input voltage.
+COMPARATOR_OFFSET_MV = 50
 
 
 @dataclass
@@ -55,12 +61,13 @@ class TDCMonitorSample:
 
 
 def q15_to_millivolts(q_value: int) -> float:
-    """Convert Q15 signed value to millivolts.
+    """Convert Q15 signed value to millivolts (input voltage).
     
-    Formula matches VHDL to_millivolts: mV = (value * 650) / 32768 + 650
+    The ADC measures feedback voltage; we subtract comparator offset to get input.
+    Formula: mV = (value * 650) / 32768 + 650 - 50
     """
-    mv = (q_value * V_HALF_SCALE_MV) / 32768 + V_CENTER_MV
-    return max(0, min(1300, mv))
+    mv = (q_value * V_HALF_SCALE_MV) / 32768 + V_CENTER_MV - COMPARATOR_OFFSET_MV
+    return max(0, min(1250, mv))
 
 
 def find_uart_port() -> str:

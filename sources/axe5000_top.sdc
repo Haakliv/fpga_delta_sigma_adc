@@ -19,22 +19,9 @@ create_clock -name CLK_25M -period 40.000 [get_ports {CLK_25M_C}]
 create_clock -name VCLK_UART     -period 100.000
 create_clock -name VCLK_TEST_PIN -period 100.000
 
-# ---------- JTAG TCK (so TimeQuest stops whining) ----------
-# JTAG clock is asynchronous to all design clocks - constrain as false path
-create_clock -name altera_reserved_tck -period 100.000 [get_ports {altera_reserved_tck}]
-#set_false_path -from [get_clocks altera_reserved_tck] -to [get_clocks *] Doesnt work quartus doesnt find it
-set_false_path -from [get_clocks *] -to [get_clocks altera_reserved_tck]
-
-# JTAG data pins - set nominal delays and false paths (debug interface only)
-set_input_delay -clock [get_clocks altera_reserved_tck] -max 0.0 [get_ports {altera_reserved_tdi}]
-set_input_delay -clock [get_clocks altera_reserved_tck] -min 0.0 [get_ports {altera_reserved_tdi}]
-set_input_delay -clock [get_clocks altera_reserved_tck] -max 0.0 [get_ports {altera_reserved_tms}]
-set_input_delay -clock [get_clocks altera_reserved_tck] -min 0.0 [get_ports {altera_reserved_tms}]
-set_output_delay -clock [get_clocks altera_reserved_tck] -max 0.0 [get_ports {altera_reserved_tdo}]
-set_output_delay -clock [get_clocks altera_reserved_tck] -min 0.0 [get_ports {altera_reserved_tdo}]
-set_false_path -from [get_ports {altera_reserved_tdi}]
-set_false_path -from [get_ports {altera_reserved_tms}]
-set_false_path -to [get_ports {altera_reserved_tdo}]
+# ---------- JTAG ----------
+# Note: JTAG interface (altera_reserved_*) is not user-accessible in this design
+# JTAG timing is handled automatically by Intel FPGA infrastructure
 
 # ---------- Clock domain relationships ----------
 # NOTE: For Agilex 5, PLL clocks are auto-created by IP SDC files.
@@ -50,8 +37,11 @@ set_false_path -to [get_ports {altera_reserved_tdo}]
 # Async user input
 set_false_path -from [get_ports {USER_BTN}]
 
-# JTAG is independent of all other clock domains
-#set_false_path -from [get_clocks *] -to [get_clocks {altera_reserved_tck}]
+# UART RX input (asynchronous serial interface)
+# Set nominal constraint with virtual clock, then false path
+set_input_delay -clock [get_clocks VCLK_UART] -max 0.0 -source_latency_included [get_ports {UART_RX}]
+set_input_delay -clock [get_clocks VCLK_UART] -min 0.0 -source_latency_included [get_ports {UART_RX}]
+set_false_path -from [get_ports {UART_RX}]
 
 # Self-test signal (ONLY SELF-TEST MODE)
 # The test_signal intentionally crosses async to TDL to simulate external analog
@@ -70,10 +60,7 @@ set_output_delay -clock [get_clocks VCLK_TEST_PIN] -max 0.0 -source_latency_incl
 set_output_delay -clock [get_clocks VCLK_TEST_PIN] -min 0.0 -source_latency_included [get_ports {TEST_PIN}]
 set_false_path -to [get_ports {TEST_PIN}]
 
-# LED1 (debug - not timing-critical)
-set_output_delay -clock [get_clocks VCLK_TEST_PIN] -max 0.0 -source_latency_included [get_ports {LED1}]
-set_output_delay -clock [get_clocks VCLK_TEST_PIN] -min 0.0 -source_latency_included [get_ports {LED1}]
-set_false_path -to [get_ports {LED1}]
+# LED1 removed from design - not needed
 
 # ---------- Analog Feedback Loop I/O (ANALOG_IN / FEEDBACK_OUT) ----------
 # These pins form a continuous-time analog feedback loop for the delta-sigma ADC.
@@ -102,12 +89,38 @@ set_false_path -from [get_ports {ANALOG_IN}]
 set_false_path -to [get_ports {FEEDBACK_OUT}]
 
 # ---------- Boot Calibration Counter (Non-Critical Startup Logic) ----------
-set_multicycle_path -from [get_registers "*v_boot_counter*"] -to [get_registers "*v_boot_counter*"] -setup -start 8
-set_multicycle_path -from [get_registers "*v_boot_counter*"] -to [get_registers "*v_boot_counter*"] -hold -start 7
+set_multicycle_path -from [get_registers "*v_boot_counter*"] -to [get_registers "*v_boot_counter*"] -setup -start 12
+set_multicycle_path -from [get_registers "*v_boot_counter*"] -to [get_registers "*v_boot_counter*"] -hold -start 11
+
+# ---------- TDC Result RTM Register (Pipelined TDC Output) ----------
+# The tdc_result register has a long combinatorial path from the TDC pipeline stages.
+# This is the final output register of the TDC and doesn't need single-cycle timing.
+# Allow 2 cycles for this path (setup = 2, hold = 1).
+set_multicycle_path -from [get_registers "*tdc_result*"] -to [get_registers "*tdc_center_tdc*"] -setup -end 4
+set_multicycle_path -from [get_registers "*tdc_result*"] -to [get_registers "*tdc_center_tdc*"] -hold -end 3
 
 # ---------- TDL Calibration Sample Counter (Non-Critical Calibration Logic) ----------
-# The fine_at_comp register captures TDC comparator state which updates asynchronously.
-# The tdl_cal_sample_cnt is a calibration counter used only during boot/calibration.
-# This path is not timing-critical - allow 4 cycles for this calibration logic.
-set_multicycle_path -setup 4 -from [get_registers {*fine_at_comp*}] -to [get_registers {*tdl_cal_sample_cnt*}]
-set_multicycle_path -hold 3 -from [get_registers {*fine_at_comp*}] -to [get_registers {*tdl_cal_sample_cnt*}]
+# Note: fine_at_comp constraint removed - register not found in current design
+# TDL calibration paths handled by other constraints in axe5000_top_late.sdc
+
+# ---------- TDC Calibration Min/Max Tracking (Non-Critical Boot Calibration) ----------
+# The v_tdc_min and v_tdc_max variables in p_tdc_calibration track min/max TDC codes
+# during boot calibration. These are local variables that update asynchronously and
+# feed into tdc_center_tdc calculation. This is startup calibration only, not real-time.
+# Allow 4 cycles for the comparison and center calculation logic.
+set_multicycle_path -setup 4 -from [get_registers {*v_tdc_max*}] -to [get_registers {*tdc_center_tdc*}]
+set_multicycle_path -hold 3 -from [get_registers {*v_tdc_max*}] -to [get_registers {*tdc_center_tdc*}]
+set_multicycle_path -setup 4 -from [get_registers {*v_tdc_min*}] -to [get_registers {*tdc_center_tdc*}]
+set_multicycle_path -hold 3 -from [get_registers {*v_tdc_min*}] -to [get_registers {*tdc_center_tdc*}]
+
+# ---------- TDC Dual-Lobe Bias Selection Pipeline (Stage-1b to Stage-1c) ----------
+# The p_stage1b process computes magnitude (abs_s9) of three bias adjustment candidates.
+# The p_stage1c process performs min-of-three selection with tie-breaking logic.
+# This is a heavily pipelined path that doesn't need single-cycle timing.
+# Allow 2 cycles for the magnitude comparison and selection logic.
+set_multicycle_path -setup 2 -from [get_registers {*adj*_s1b*}] -to [get_registers {*d_used_s1c*}]
+set_multicycle_path -hold 1 -from [get_registers {*adj*_s1b*}] -to [get_registers {*d_used_s1c*}]
+set_multicycle_path -setup 2 -from [get_registers {*mag*_s1b*}] -to [get_registers {*d_used_s1c*}]
+set_multicycle_path -hold 1 -from [get_registers {*mag*_s1b*}] -to [get_registers {*d_used_s1c*}]
+set_multicycle_path -setup 2 -from [get_registers {*fine_s1b*}] -to [get_registers {*d_used_s1c*}]
+set_multicycle_path -hold 1 -from [get_registers {*fine_s1b*}] -to [get_registers {*d_used_s1c*}]

@@ -97,26 +97,20 @@ architecture rtl of tdc_quantizer is
   signal reset_tdc       : std_logic;
   signal analog_crossing : std_logic;
 
-  -- Start/Stop arming
-  signal start_pulse     : std_logic := '0';
-  signal ref_phase0_prev : std_logic := '0';
-  signal armed           : std_logic := '0';
-
-  -- Stop synchronization
-  signal analog_sync         : std_logic_vector(2 downto 0) := (others => '0');
-  signal analog_stop_mark    : std_logic                    := '0';
-  signal stop_level_at_start : std_logic                    := '0';
-  signal edge_inhibit        : unsigned(3 downto 0)         := (others => '0');
-  signal inhibit_just_ended  : std_logic                    := '0'; -- Flag: capture reference level on next cycle
-  signal level_at_start_pulse : std_logic                   := '0'; -- Comparator state at start pulse (for inhibit check)
-
-  -- ========================================================================
-  -- CDC Attributes for Synchronizers
-  -- ========================================================================
-  -- Mark CDC synchronizer chains for proper MTBF analysis and timing constraint recognition
+  -- Start/Stop arming signals
+  signal ref_phase0_prev       : std_logic                             := '0';
+  signal start_pulse           : std_logic                             := '0';
+  signal armed                 : std_logic                             := '0';
+  signal analog_stop_mark      : std_logic                             := '0';
+  signal inhibit_just_ended    : std_logic                             := '0';
+  signal edge_inhibit          : unsigned(3 downto 0)                  := (others => '0');
+  signal level_at_start_pulse  : std_logic                             := '0';
+  signal stop_level_at_start   : std_logic                             := '0';
+  
   attribute altera_attribute : string;
 
   -- analog_sync chain: analog_in → clk_tdc domain (3-FF synchronizer for Stop)
+  signal analog_sync : std_logic_vector(2 downto 0) := (others => '0');
   attribute altera_attribute of analog_sync : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
 
   -- TDL signals
@@ -180,8 +174,9 @@ architecture rtl of tdc_quantizer is
   signal calib_hist_update_d3 : std_logic              := '0'; -- Stage 3: Update enable
 
   -- Pipeline registers to break search comparison timing path
-  signal calib_hist_read_d1  : unsigned(3 downto 0)   := (others => '0'); -- Histogram value read for comparison
-  signal calib_search_idx_d1 : integer range 0 to 255 := 0;
+  signal calib_hist_read_d1    : unsigned(3 downto 0)   := (others => '0'); -- Histogram value read for comparison
+  signal calib_search_idx_d1   : integer range 0 to 255 := 0;
+  signal calib_hist_read_addr  : integer range 0 to 255 := 0; -- Address for histogram read during search
 
   -- Pipeline/register helpers for window check
   signal s_vld_pre : std_logic := '0';
@@ -827,8 +822,10 @@ begin
         calib_hist_idx_d2      <= 0;
         calib_hist_value_d2    <= (others => '0');
         calib_hist_update_d2   <= '0';
+        calib_hist_update_d2   <= '0';
         calib_hist_read_d1     <= (others => '0');
         calib_search_idx_d1    <= 0;
+        calib_hist_read_addr   <= 0;
 
       else
         -- Increment delay counter and set ready flag when it expires (breaks timing path)
@@ -855,14 +852,39 @@ begin
               v_dcoarse_idx := to_integer(dcoarse_for_calib);
             end if;
 
-            -- Pipeline stage 1: Read histogram
+            -- Pipeline stage 1: Read histogram using dedicated read index
             calib_hist_idx_d1   <= v_dcoarse_idx;
-            calib_hist_value_d1 <= calib_histogram(v_dcoarse_idx);
+            -- Optimizing RAM inference: ensure synchronous read
+            -- The value will be available in calib_hist_read_stage2 in the next cycle
+            -- calib_hist_value_d1 is actually the address for the read port?
+            -- Wait, the original code looked like it was inferring distributed RAM with async read
+            -- `calib_hist_value_d1 <= calib_histogram(v_dcoarse_idx);`
+            -- If v_dcoarse_idx is registered, this is a synchronous read? No, it's an address register.
+            -- To force Block RAM (or clean timing), we should register the OUTPUT of the read.
+            -- Replacing `calib_hist_value_d1 <= calib_histogram(v_dcoarse_idx)` with logic that
+            -- respects the pipeline.
+            -- The existing code has `calib_hist_value_d2 <= calib_hist_value_d1`.
+            -- Let's stick to the existing pipeline but move the array read to be explicit.
+            -- To fix timing, we can't do much about the read time unless we use BRAM.
+            -- For Distributed RAM (LUTRAM), the read is fast (combinational) after address.
+            -- The path is `dcoarse_for_calib` -> `v_dcoarse_idx` -> `RAM Read` -> `calib_hist_value_d1`.
+            -- This is too deep.
+            -- Fix: Register the ADDRESS first.
+            -- `v_dcoarse_idx` is derived from `dcoarse_for_calib`.
+            -- Let's change `calib_hist_idx_d1` to be that register.
+            -- And perform the read in the NEXT cycle.
+            calib_hist_read_addr <= v_dcoarse_idx;
 
             calib_sample_count <= calib_sample_count + 1;
-          end if;
+          end if; -- analog_stop_mark_calib
+          
+          -- Pipeline stage 2: Perform the Read (synchronous to address change)
+          -- This breaks the timing path from dcoarse logic to memory output
+          calib_hist_value_d1   <= calib_histogram(calib_hist_read_addr);
+          calib_hist_idx_d1     <= calib_hist_read_addr; -- Pass address along pipeline
 
-          -- Pipeline stage 2: Register read value
+          -- Pipeline stage 3: Register read value (d2)
+          -- Note: shifted pipeline stages d2, d3...
           calib_hist_idx_d2   <= calib_hist_idx_d1;
           calib_hist_value_d2 <= calib_hist_value_d1;
           if calib_sample_count > 0 and calib_sample_count <= 16 then
@@ -942,7 +964,7 @@ begin
   begin
     if rising_edge(clk_tdc) then
       if coarse_bias_effective /= v_bias_prev then
-        report "BIAS CHANGE: coarse_bias_effective=" & integer'image(to_integer(coarse_bias_effective)) & " (calib_done=" & std_logic'image(calib_done)(2) & " input_bias=" & integer'image(to_integer(coarse_bias)) & " calib_bias=" & integer'image(to_integer(coarse_bias_calibrated)) & ")" severity note;
+        report "BIAS CHANGE: coarse_bias_effective=" & integer'image(to_integer(coarse_bias_effective)) & " (calib_done=" & std_logic'image(calib_done) & " input_bias=" & integer'image(to_integer(coarse_bias)) & " calib_bias=" & integer'image(to_integer(coarse_bias_calibrated)) & ")" severity note;
         v_bias_prev := coarse_bias_effective;
       end if;
     end if;

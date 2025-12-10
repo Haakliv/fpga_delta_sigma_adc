@@ -32,7 +32,8 @@ architecture rtl of cic_sinc3_decimator is
   -- For sinc3 with M=1, DC gain G = R^3
   -- For power-of-2 R, shift by 3*log2(R) is exact and fast
   -- For non-power-of-2 R, we need multi-cycle division (handled via pipelining)
-  constant C_R_CUBED : positive := GC_DECIMATION * GC_DECIMATION * GC_DECIMATION;
+  -- Note: For large R (e.g. 25600), R^3 exceeds VHDL integer range.
+  -- We compute R^3 at runtime for division, not as a constant.
   
   -- Detect if decimation is power-of-2 for fast shift instead of division
   function is_power_of_2(n : positive) return boolean is
@@ -225,9 +226,13 @@ begin
   -- Result: Output is signed Q-format where full-scale ±1.0 → ±(2^(W-1)-1)
   -- ========================================================================
   p_scale_stage : process(clk)
-    -- Pre-compute rounding offset as constant (synthesis evaluates at compile time)
-    constant C_ROUND_OFFSET : signed(C_WIDE_WIDTH - 1 downto 0) := 
-      to_signed(C_R_CUBED / 2, C_WIDE_WIDTH);
+    -- Compute R^3 at runtime (variables support larger values than constants)
+    variable v_r_cubed      : signed(63 downto 0);
+    variable v_round_offset : signed(C_WIDE_WIDTH - 1 downto 0);
+    -- Division operands (constrained to 63-bit to satisfy LPM_WIDTHN/D <= 64)
+    variable v_dividend     : signed(62 downto 0);
+    variable v_divisor      : signed(62 downto 0);
+    variable v_quotient     : signed(62 downto 0);
   begin
     if rising_edge(clk) then
       if reset = '1' then
@@ -240,6 +245,11 @@ begin
         y_out             <= (others => '0');
         y_valid           <= '0';
       else
+        -- Compute R^3 as 64-bit signed (handles large decimation ratios like 25600)
+        -- Perform multiplications with intermediate resizing to avoid 192-bit intermediate
+        v_r_cubed := resize(to_signed(GC_DECIMATION, 32) * to_signed(GC_DECIMATION, 32), 64);
+        v_r_cubed := resize(v_r_cubed * to_signed(GC_DECIMATION, 32), 64);
+        v_round_offset := resize(shift_right(v_r_cubed, 1), C_WIDE_WIDTH);
         -- ====== Pipeline Stage 1: Upscale by 2^Q ======
         -- Shift left to preserve fractional bits in Q-format
         if comb3_valid = '1' then
@@ -254,9 +264,9 @@ begin
         -- Now it's in its own registered stage
         if scale_pipe1_valid = '1' then
           if scale_pipe1 >= 0 then
-            scale_pipe2 <= scale_pipe1 + C_ROUND_OFFSET;
+            scale_pipe2 <= scale_pipe1 + v_round_offset;
           else
-            scale_pipe2 <= scale_pipe1 - C_ROUND_OFFSET;
+            scale_pipe2 <= scale_pipe1 - v_round_offset;
           end if;
           scale_pipe2_valid <= '1';
         else
@@ -266,11 +276,16 @@ begin
         -- ====== Pipeline Stage 3: Divide by R^3 ======
         -- For power-of-2: bit shift (fast)
         -- For non-power-of-2: exact division (synthesis uses DSP)
+        -- Constrain division to 63-bit operands (LPM_WIDTHN/D must be <= 64)
         if scale_pipe2_valid = '1' then
           if C_IS_POW2 then
             scale_pipe3 <= shift_right(scale_pipe2, C_SHIFT_BITS);
           else
-            scale_pipe3 <= scale_pipe2 / to_signed(C_R_CUBED, scale_pipe2'length);
+            -- Use 63-bit operands to stay under LPM divider limit
+            v_dividend := resize(scale_pipe2, 63);
+            v_divisor := resize(v_r_cubed, 63);
+            v_quotient := v_dividend / v_divisor;
+            scale_pipe3 <= resize(v_quotient, scale_pipe3'length);
           end if;
           scale_pipe3_valid <= '1';
         else

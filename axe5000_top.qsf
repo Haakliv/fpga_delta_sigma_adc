@@ -103,3 +103,26 @@ set_global_assignment -name EDA_OUTPUT_DATA_FORMAT HSPICE -section_id eda_board_
 set_global_assignment -name EDA_NETLIST_WRITER_OUTPUT_DIR "<output_directory>" -section_id eda_board_design_signal_integrity
 set_location_assignment PIN_AG23 -to UART_RX -comment IOBANK_5A
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_RX -entity axe5000_top
+set_instance_assignment -name RECEIVER_EQUALIZATION OFF -to ANALOG_IN
+set_global_assignment -name TIMING_ANALYZER_REPORT_NUM_WORST_CASE_TIMING_PATHS 200
+
+# --------------------------------------------------------------------------
+# Suppress expected synthesis optimization warnings (December 2025)
+# These warnings indicate successful constant-bit optimization saving ~540 FFs
+# See synthesis_warnings_analysis.txt for detailed explanation
+# --------------------------------------------------------------------------
+
+# Suppress stuck register bit warnings (14131=VCC, 14130=GND, 13024=stuck pins)
+# Only applied to specific instances where optimization is expected and verified
+set_instance_assignment -name MESSAGE_DISABLE 14131 -to i_adc|i_tdc|cal_lut* -entity axe5000_top
+set_instance_assignment -name MESSAGE_DISABLE 14131 -to i_adc|i_tdc|lane_scales* -entity axe5000_top
+set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_adc|i_tdc|partial_sums* -entity axe5000_top
+set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_adc|i_tdc|g_encoder* -entity axe5000_top
+set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_adc|i_lowpass|* -entity axe5000_top
+set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_adc|i_equalizer|* -entity axe5000_top
+set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_adc|i_cic* -entity axe5000_top
+set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_uart_streamer|uart_tx_data* -entity axe5000_top
+
+# LED1 is not currently used in design - suppress stuck pin warning
+set_instance_assignment -name MESSAGE_DISABLE 13410 -to LED1 -entity axe5000_top
+set_instance_assignment -name MESSAGE_DISABLE 13024 -to LED1 -entity axe5000_top

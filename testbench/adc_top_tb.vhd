@@ -1,7 +1,7 @@
 -- ************************************************************************
 -- Unified Testbench for ADC (TDC-based and RC-based delta-sigma ADC)
 -- Simulates both TDC-based and traditional RC delta-sigma ADC
--- Uses 1.3V I/O bank voltage for consistent voltage range
+-- Uses 1.25V effective reference voltage for consistent voltage range
 -- ************************************************************************
 --
 -- TEST EXECUTION EXAMPLES:
@@ -43,7 +43,7 @@ entity adc_top_tb is
         GC_TB_SIGNAL_TYPE  : integer := 0; -- Signal type enum
         GC_TB_AMPLITUDE    : real    := 0.25; -- Signal amplitude (normalized: 0.0 to 1.0, will be scaled to 1.3V)
         GC_TB_FREQUENCY_HZ : real    := 1000.0; -- Frequency for sine/square waves
-        GC_TB_DC_LEVEL     : real    := 0.5; -- DC offset or DC test level (normalized: 0.5 = 0.65V at 1.3V bank)
+        GC_TB_DC_LEVEL     : real    := 0.5; -- DC offset or DC test level (normalized: 0.5 = 0.625V at 1.25V reference)
         GC_OPEN_LOOP       : boolean := false -- Enable open-loop mode for DAC characterization
     );
 end entity;
@@ -53,7 +53,7 @@ architecture behavioral of adc_top_tb is
     -- Test parameters
     constant C_CLK_SYS_PERIOD : time     := 10 ns; -- 100 MHz (from PLL outclk_0 in hardware)
     constant C_CLK_TDC_PERIOD : time     := 2.474 ns; -- 404.166667 MHz (ASYNC from PLL iopll_tdc_outclk0 in hardware)
-    constant C_REF_PERIOD     : time     := 500 ns; -- 2 MHz reference (from PLL outclk_2 in hardware)
+    constant C_REF_PERIOD     : time     := 20 ns; -- 50 MHz reference (from PLL outclk_2 in hardware)
     constant C_DATA_WIDTH     : positive := 16;
     constant C_TDC_WIDTH      : positive := 16;
 
@@ -307,7 +307,7 @@ begin
     p_analog_voltage_generator : process
         variable v_time_s : real := 0.0;
         constant C_PI     : real := 3.14159265359;
-        constant C_VBANK  : real := 1.3; -- FPGA I/O bank voltage
+        constant C_VBANK  : real := 1.25; -- FPGA I/O bank voltage (measured effective Vref)
     begin
         wait until reset = '0';
         report "Analog voltage generator started! Signal type=" & integer'image(GC_TB_SIGNAL_TYPE);
@@ -360,14 +360,14 @@ begin
     -- ========================================================================
     -- KEY OPTIMIZATION: Use clk_tdc only for counting, update at ref_clock rate
     -- Count dac_out_bit high cycles per ref period to get duty cycle.
-    -- This reduces signal update frequency from 400MHz to 2MHz (200x fewer events).
+    -- At 50MHz ref with 400MHz TDC, there are 8 TDC ticks per ref period.
     -- ========================================================================
 
     -- Duty counter at clk_tdc rate (just counting, no signal updates)
     p_duty_counter : process(clk_tdc, reset)
-        constant C_TICKS_PER_PERIOD : integer                := 202;
-        variable v_tick_count       : integer range 0 to 255 := 0;
-        variable v_high_count       : integer range 0 to 255 := 0;
+        constant C_TICKS_PER_PERIOD : integer                := 8; -- 400MHz TDC / 50MHz ref = 8 ticks
+        variable v_tick_count       : integer range 0 to 15  := 0;
+        variable v_high_count       : integer range 0 to 15  := 0;
     begin
         if reset = '1' then
             v_tick_count     := 0;
@@ -395,19 +395,18 @@ begin
 
     -- RC filter at ref_clock rate (only updates when period done)
     p_rc_filter_duty_avg : process(clk_tdc, reset)
-        constant C_DAC_HIGH_V       : real      := 1.3;
-        constant C_TICKS_PER_PERIOD : integer   := 202;
-        -- More accurate alpha calculation: tau = 10us, T = 500ns
-        -- alpha = exp(-T/tau) = exp(-500ns/10us) = exp(-0.05) ≈ 0.9512
-        -- But duty averaging loses some resolution, use slightly higher alpha
-        constant C_ALPHA            : real      := 0.975; -- Slower filter for better accuracy
-        variable v_vn               : real      := 0.65;
+        constant C_DAC_HIGH_V       : real      := 1.25;
+        constant C_TICKS_PER_PERIOD : integer   := 8; -- 400MHz TDC / 50MHz ref = 8 ticks
+        -- RC time constant: tau = 1us (1k x 1nF), T = 20ns (50MHz ref)
+        -- alpha = exp(-T/tau) = exp(-20ns/1us) = exp(-0.02) ≈ 0.9802
+        constant C_ALPHA            : real      := 0.9802; -- Matches 1us RC time constant
+        variable v_vn               : real      := 0.625;
         variable v_vdac_avg         : real      := 0.0;
         variable v_prev_done        : std_logic := '0';
     begin
         if reset = '1' then
-            v_vn             := 0.65;
-            analog_voltage_n <= 0.65;
+            v_vn             := 0.625;
+            analog_voltage_n <= 0.625;
             v_prev_done      := '0';
         elsif rising_edge(clk_tdc) then
             -- Only update on rising edge of duty_period_done
@@ -421,7 +420,7 @@ begin
     end process;
 
     -- ========================================================================
-    -- COMPARATOR MODEL (v19.0) - Time-based mode switching
+    -- COMPARATOR MODEL (v20.0) - Time-based mode switching for 50MHz reference
     -- ========================================================================
     -- This model serves two distinct purposes:
     -- 
@@ -432,7 +431,7 @@ begin
     -- 2. TDC MODE (t >= 70us): Generate crossing for TDC measurement
     --    - At ref_clock edge: output starts LOW
     --    - At calculated crossing time: output transitions HIGH
-    --    - Crossing time = 250ns + GAIN * (Vp - Vn)
+    --    - Crossing time = 8ns + GAIN * (Vp - Vn) for 50MHz (20ns period)
     --    - TDC measures this transition time to generate sample
     --
     -- Mode selection: TIME-BASED (not voltage-based!)
@@ -440,20 +439,12 @@ begin
     -- ========================================================================
 
     p_comparator_model : process
-        -- PLANT GAIN SELECTION - CALIBRATED FROM OPEN-LOOP CHARACTERIZATION:
-        -- TDC timing sensitivity: crossing_time = 250ns + C_GAIN_NS_V * (Vp - Vn)
-        -- With clk_tdc=404MHz (2.474ns), raw ticks = C_GAIN_NS_V / 2.474ns per volt
-        -- TDC output has 8 fractional bits, so K_tdc = raw_ticks × 256 codes/V
-        --
-        -- MEASURED DATA (char2d_650mv.tdc_characterization):
-        --   40% duty: Vdac=525mV, dV=+125mV, TDC=+1326
-        --   50% duty: Vdac=644mV, dV=+6mV,   TDC=+148
-        --   60% duty: Vdac=786mV, dV=-136mV, TDC=-1160
-        --   Slope = (1326-(-1160))/(0.125-(-0.136)) = 2486/0.261 = 9525 codes/V
-        --
-        -- Back-calculation: C_GAIN_NS_V = K_tdc × T_clk / 256 = 9525 × 2.474 / 256 ≈ 92 ns/V
-        -- Using 92 ns/V for accurate model matching.
-        constant C_GAIN_NS_V      : real      := 92.0; -- ns per volt (CALIBRATED from open-loop test)
+        -- PLANT GAIN SELECTION - For 50MHz reference (20ns period):
+        -- TDC timing sensitivity is limited to ~8 ticks per period at 400MHz
+        -- crossing_time = 8ns + C_GAIN_NS_V * (Vp - Vn)
+        -- With only 8 ticks (20ns period), resolution is ~2.5ns per tick
+        -- Using ~3ns/V gain gives reasonable resolution within period
+        constant C_GAIN_NS_V      : real      := 3.0; -- ns per volt for 50MHz operation
         constant C_SWEEP_END_TIME : time      := 70 us; -- Sweep ends around this time
         variable v_verr           : real      := 0.0; -- Voltage error (Vp - Vn)
         variable v_cross_ns       : real      := 250.0; -- Crossing time in ns
@@ -510,15 +501,14 @@ begin
                 -- Solution: Start with FINAL state for delta-sigma, then transition
                 -- to opposite briefly before transitioning back at timing-encoded moment.
                 --
-                -- Timeline within 500ns period:
-                --   0ns   : Set final state (sampled by delta-sigma at start_pulse)
-                --   50ns  : Transition to opposite (arms TDC)
-                --   Tcross: Transition back to final (TDC captures this)
-                --   500ns : Next period begins
+                -- Timeline within 20ns period (50MHz reference):
+                --   0ns   : Set opposite state (arms TDC)
+                --   Tcross: Transition to final state (TDC captures this)
+                --   20ns  : Next period begins
                 --
                 -- The crossing time Tcross varies with voltage:
-                --   Tcross = 150ns + GAIN * (Vp - Vn)
-                --   Range: 20ns to 240ns (BEFORE DAC updates at 250ns falling edge)
+                --   Tcross = 8ns + GAIN * (Vp - Vn)
+                --   Range: 2ns to 18ns (within 20ns reference period)
                 -- ========================================================================
 
                 -- Determine final state based on voltage comparison (NOT dac_out_bit!)
@@ -529,17 +519,18 @@ begin
                     v_final := '0';     -- Vp <= Vn: comparator output should be LOW
                 end if;
 
-                -- Calculate crossing time from period start (EARLY, before DAC update at 250ns)
-                -- Base offset: 100ns (midpoint of measurement window)
-                -- Gain: ±80ns/V gives ±104ns range for ±1.3V full scale
-                -- Result range: 20ns to 240ns (always before DAC update)
-                v_cross_ns := 100.0 + (80.0 * v_verr);
+                -- Calculate crossing time from period start
+                -- For 50MHz (20ns period):
+                -- Base offset: 8ns (midpoint of measurement window)
+                -- Gain: 3ns/V gives ±4ns range for ±1.25V full scale
+                -- Result range: 2ns to 18ns (within 20ns period)
+                v_cross_ns := 8.0 + (3.0 * v_verr);
 
-                -- Clamp to valid range (must be > blanking window and < DAC update)
-                if v_cross_ns < 20.0 then
-                    v_cross_ns := 20.0;
-                elsif v_cross_ns > 240.0 then
-                    v_cross_ns := 240.0;
+                -- Clamp to valid range (must be within reference period)
+                if v_cross_ns < 2.0 then
+                    v_cross_ns := 2.0;
+                elsif v_cross_ns > 18.0 then
+                    v_cross_ns := 18.0;
                 end if;
 
                 -- Pulse Generation:
@@ -572,7 +563,7 @@ begin
     p_rc_comparator_model : process(clk_sys, reset)
         -- RC filter for DAC feedback modeling at clk_sys rate
         -- Models external RC integrator: DAC_OUT → R → C → ANALOG_IN_N
-        constant C_DAC_HIGH_V   : real    := 1.3; -- DAC high voltage (1.3V I/O bank)
+        constant C_DAC_HIGH_V   : real    := 1.25; -- DAC high voltage (effective Vref)
         constant C_ALPHA        : real    := 0.95; -- RC filter coefficient (~2us time constant at 100MHz)
         variable v_dac_filtered : real    := 0.0; -- Start at 0V to allow proper settling
         variable v_dac_voltage  : real    := 0.0;
@@ -609,14 +600,14 @@ begin
     -- ========================================================================
     p_main : process
         -- Convert voltage (0.0-1.0 normalized) to expected Q15 value
-        -- Q15 maps linearly: 0mV -> -32768, 650mV -> 0, 1300mV -> +32767
+        -- V_REF = 1.25V (measured effective reference voltage)
+        -- Q15 maps linearly: 0mV -> -32768, 625mV -> 0, 1250mV -> +32767
         -- So: Q15 = (V_normalized - 0.5) * 65536
-        -- Or: Q15 = (V_mV - 650) * 32768 / 650
         function voltage_to_q15(v_normalized : real) return integer is
             variable v_q15 : integer;
         begin
-            -- v_normalized is 0.0 to 1.0, mapping to 0mV to 1300mV
-            -- Center is 0.5 (650mV) which maps to Q15 = 0
+            -- v_normalized is 0.0 to 1.0, mapping to 0mV to 1250mV
+            -- Center is 0.5 (625mV) which maps to Q15 = 0
             v_q15 := integer((v_normalized - 0.5) * 65536.0);
             -- Saturate to Q15 range
             if v_q15 > 32767 then
@@ -629,18 +620,19 @@ begin
         end function;
         
         -- Convert Q15 signed value to millivolts (for reporting only)
-        -- Formula: mV = (q_value * 650) / 32768 + 650
-        -- Q15: -32768 -> 0mV, 0 -> 650mV, +32767 -> 1300mV
+        -- V_REF = 1.25V, so center = 625mV, half-scale = 625mV
+        -- Formula: mV = (q_value * 625) / 32768 + 625
+        -- Q15: -32768 -> 0mV, 0 -> 625mV, +32767 -> 1250mV
         function q_to_mv(q_value : integer) return integer is
             variable v_scaled : integer;
         begin
-            -- Scale: multiply by 650, divide by 32768 (2^15)
-            v_scaled := (q_value * 650) / 32768 + 650;
-            -- Saturate to 0..1300 mV range
+            -- Scale: multiply by 625, divide by 32768 (2^15)
+            v_scaled := (q_value * 625) / 32768 + 625;
+            -- Saturate to 0..1250 mV range
             if v_scaled < 0 then
                 return 0;
-            elsif v_scaled > 1300 then
-                return 1300;
+            elsif v_scaled > 1250 then
+                return 1250;
             else
                 return v_scaled;
             end if;
@@ -752,7 +744,7 @@ begin
                 v_min_mv       := q_to_mv(sample_min_value);
                 v_max_mv       := q_to_mv(sample_max_value);
                 v_mean_mv      := q_to_mv(v_avg_q);
-                v_expected_mv  := integer(GC_TB_DC_LEVEL * 1300.0);
+                v_expected_mv  := integer(GC_TB_DC_LEVEL * 1250.0);
                 v_variation_mv := v_max_mv - v_min_mv;
                 v_error_mv     := abs(v_mean_mv - v_expected_mv);
 
@@ -764,7 +756,7 @@ begin
 
                 -- Check voltage accuracy in Q15 format
                 check(v_error_q <= v_tolerance_q,
-                      "DC VOLTAGE ERROR EXCEEDS TOLERANCE in " & test_name & ": " & "Expected Q15=" & integer'image(v_expected_q) & " (±" & integer'image(v_tolerance_q) & "), " & "Measured Q15=" & integer'image(v_avg_q) & ", " & "Error = " & integer'image(v_error_q) & ". " & "Input voltage: " & integer'image(integer(GC_TB_DC_LEVEL * 1300.0)) & "mV.");
+                      "DC VOLTAGE ERROR EXCEEDS TOLERANCE in " & test_name & ": " & "Expected Q15=" & integer'image(v_expected_q) & " (±" & integer'image(v_tolerance_q) & "), " & "Measured Q15=" & integer'image(v_avg_q) & ", " & "Error = " & integer'image(v_error_q) & ". " & "Input voltage: " & integer'image(integer(GC_TB_DC_LEVEL * 1250.0)) & "mV.");
 
                 info("DC VOLTAGE ACCURACY CHECK PASSED: Error Q15=" & integer'image(v_error_q) & " within ±" & integer'image(v_tolerance_q) & " tolerance");
             else
@@ -875,7 +867,7 @@ begin
             elsif run("tdc_characterization") then
                 info("==========================================================");
                 info("TDC 2D CHARACTERIZATION TEST - Fast DAC Duty Sweep");
-                info("Input Voltage: " & integer'image(integer(GC_TB_DC_LEVEL * 1300.0)) & "mV");
+                info("Input Voltage: " & integer'image(integer(GC_TB_DC_LEVEL * 1250.0)) & "mV");
                 info("Sweeping DAC duty: 40%, 50%, 60% (3 points around midpoint)");
                 info("Goal: Find if ANY region has unsaturated TDC output");
                 info("==========================================================");
@@ -901,9 +893,9 @@ begin
                     wait for 1 us;
 
                     info("======================================================");
-                    info("Test Point: Vin=" & integer'image(integer(GC_TB_DC_LEVEL * 1300.0)) & "mV, DAC=" & integer'image(duty_pct * 10) & "%");
-                    info("Expected Vdac_avg ~= " & integer'image(duty_pct * 130) & "mV");
-                    info("Expected differential ~= " & integer'image(integer(GC_TB_DC_LEVEL * 1300.0) - duty_pct * 130) & "mV");
+                    info("Test Point: Vin=" & integer'image(integer(GC_TB_DC_LEVEL * 1250.0)) & "mV, DAC=" & integer'image(duty_pct * 10) & "%");
+                    info("Expected Vdac_avg ~= " & integer'image(duty_pct * 125) & "mV");
+                    info("Expected differential ~= " & integer'image(integer(GC_TB_DC_LEVEL * 1250.0) - duty_pct * 125) & "mV");
 
                     -- Generate PWM at ref_clock rate (2 MHz = 500ns period)
                     -- duty_pct=4..6 → PWM with 40%, 50%, 60% duty cycle

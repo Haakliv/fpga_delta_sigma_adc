@@ -187,8 +187,9 @@ begin
       if reset = '1' then
         mv_code <= (others => '0');
       elsif lp_valid_out = '1' then
-        -- Use shared conversion function (Q-format to mV)
-        mv_code <= to_millivolts(signed(lp_data_out), GC_DATA_WIDTH);
+        -- Q15 output: [-32768, +32767] maps to [-1.0, +1.0)
+        -- No conversion needed - output raw Q15 for host processing
+        mv_code <= unsigned(resize(signed(lp_data_out), 16));
       end if;
     end if;
   end process;

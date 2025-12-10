@@ -23,12 +23,6 @@ package dsp_utils_pkg is
     -- Generic width parameter allows use with different accumulator sizes
     function map_bipolar(b : std_logic; width : positive) return signed;
 
-    -- Convert Q-format signed value to millivolts
-    -- Scales from signed Q-format [-1, +1) to [0, 1300] mV range
-    -- Formula: mV = (value * 650) / 2^(data_width-1) + 650
-    -- Returns unsigned 16-bit mV value, saturated to 0..1300
-    function to_millivolts(value : signed; data_width : positive) return unsigned;
-
 end package;
 
 package body dsp_utils_pkg is
@@ -94,31 +88,6 @@ package body dsp_utils_pkg is
         else
             return -v_one;
         end if;
-    end function;
-
-    -- Convert Q-format signed value to millivolts
-    -- Scales from signed Q-format [-1, +1) to [0, 1300] mV range
-    -- Formula: mV = (value * 650) / 2^(data_width-1) + 650
-    function to_millivolts(value : signed; data_width : positive) return unsigned is
-        variable v_scaled : signed(31 downto 0);
-        variable v_result : unsigned(15 downto 0);
-    begin
-        -- Scale: multiply by 650, shift by (data_width - 1) to undo Q-format
-        v_scaled := resize(shift_right(resize(value, 32) * to_signed(650, 32),
-                                       data_width - 1), 32);
-        -- Add midscale offset (650 mV)
-        v_scaled := v_scaled + to_signed(650, 32);
-
-        -- Saturate to 0..1300 mV range
-        if v_scaled < 0 then
-            v_result := (others => '0');
-        elsif v_scaled > to_signed(1300, 32) then
-            v_result := to_unsigned(1300, 16);
-        else
-            v_result := unsigned(v_scaled(15 downto 0));
-        end if;
-
-        return v_result;
     end function;
 
 end package body;
