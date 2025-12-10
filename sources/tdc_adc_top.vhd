@@ -9,48 +9,47 @@ use work.dsp_utils_pkg.all;
 
 entity tdc_adc_top is
   generic(
-    GC_SYSTEM_CLK_HZ : natural := 100_000_000;
     -- Decimation Factor (R)
     -- Increased to 8192 for 50MHz operation: 50MHz / 8192 = 6.1 kHz output rate
     -- Prevents UART overflow (was 384 @ 2MHz = 5.2kHz)
     GC_DECIMATION    : positive := 8192;
-    GC_DATA_WIDTH    : positive := 16;     -- Output data width
-    GC_TDC_OUTPUT    : positive := 16;     -- TDC output width
-    GC_SIM           : boolean  := false;  -- Simulation mode for TDC (enables debug reports)
-    GC_FAST_SIM      : boolean  := false;  -- Fast simulation mode (reduces boot timeouts)
-    GC_OPEN_LOOP     : boolean  := false   -- Open-loop test mode (bypass feedback)
+    GC_DATA_WIDTH    : positive := 16;  -- Output data width
+    GC_TDC_OUTPUT    : positive := 16;  -- TDC output width
+    GC_SIM           : boolean  := false; -- Simulation mode for TDC (enables debug reports)
+    GC_FAST_SIM      : boolean  := false; -- Fast simulation mode (reduces boot timeouts)
+    GC_OPEN_LOOP     : boolean  := false -- Open-loop test mode (bypass feedback)
   );
   port(
     -- Clocks and reset
-    clk_sys            : in  std_logic; -- System clock (e.g., 100 MHz)
-    clk_tdc            : in  std_logic; -- TDC fast clock (e.g., 400-600 MHz)
-    reset              : in  std_logic;
+    clk_sys             : in  std_logic; -- System clock (e.g., 100 MHz)
+    clk_tdc             : in  std_logic; -- TDC fast clock (e.g., 400-600 MHz)
+    reset               : in  std_logic;
     -- Reference clock for TDC start edge
-    ref_clock          : in  std_logic;
+    ref_clock           : in  std_logic;
     -- GPIO IP interface (connects to adc_system GPIO exports at top level)
-    comparator_in      : in  std_logic; -- From adc_system comp_out_export
-    dac_out_bit        : out std_logic; -- To adc_system slope_din_export
+    comparator_in       : in  std_logic; -- From adc_system comp_out_export
+    dac_out_bit         : out std_logic; -- To adc_system slope_din_export
     -- Optional trigger input (when '1', sampling is enabled; when '0', sampling is disabled)
-    trigger_enable     : in  std_logic := '1'; -- Default '1' for continuous sampling -- @suppress "Unused port: trigger_enable is not used in fpga_lib.tdc_adc_top(rtl)"
+    trigger_enable      : in  std_logic := '1'; -- Default '1' for continuous sampling -- @suppress "Unused port: trigger_enable is not used in fpga_lib.tdc_adc_top(rtl)"
     -- Open-loop test mode (GC_OPEN_LOOP=true only)
-    open_loop_dac_duty : in  std_logic := '0'; -- Fixed DAC output in open-loop mode
+    open_loop_dac_duty  : in  std_logic := '0'; -- Fixed DAC output in open-loop mode
 
     -- Streaming sample output
-    sample_data        : out std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
-    sample_valid       : out std_logic;
+    sample_data         : out std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
+    sample_valid        : out std_logic;
     -- Debug outputs for characterization
-    debug_tdc_out      : out signed(GC_TDC_OUTPUT - 1 downto 0);
-    debug_tdc_valid    : out std_logic;
+    debug_tdc_out       : out signed(GC_TDC_OUTPUT - 1 downto 0);
+    debug_tdc_valid     : out std_logic;
     -- TDC Monitor outputs (for isolating TDC sanity check)
-    tdc_monitor_code   : out signed(GC_TDC_OUTPUT - 1 downto 0); -- Raw TDC code
-    tdc_monitor_center : out signed(GC_TDC_OUTPUT - 1 downto 0); -- Calibrated center
-    tdc_monitor_diff   : out signed(GC_TDC_OUTPUT - 1 downto 0); -- tdc_code - center
-    tdc_monitor_dac    : out std_logic; -- DAC bit at sample
-    tdc_monitor_valid  : out std_logic; -- Monitor data valid
+    tdc_monitor_code    : out signed(GC_TDC_OUTPUT - 1 downto 0); -- Raw TDC code
+    tdc_monitor_center  : out signed(GC_TDC_OUTPUT - 1 downto 0); -- Calibrated center
+    tdc_monitor_diff    : out signed(GC_TDC_OUTPUT - 1 downto 0); -- tdc_code - center
+    tdc_monitor_dac     : out std_logic; -- DAC bit at sample
+    tdc_monitor_valid   : out std_logic; -- Monitor data valid
     -- Runtime control
-    disable_tdc_contrib: in  std_logic := '0'; -- When '1', disable TDC contribution (CIC-only mode)
-    disable_eq_filter  : in  std_logic := '0'; -- When '1', bypass EQ filter (CIC direct to LP)
-    disable_lp_filter  : in  std_logic := '0'  -- When '1', bypass LP filter (EQ direct to output)
+    disable_tdc_contrib : in  std_logic := '0'; -- When '1', disable TDC contribution (CIC-only mode)
+    disable_eq_filter   : in  std_logic := '0'; -- When '1', bypass EQ filter (CIC direct to LP)
+    disable_lp_filter   : in  std_logic := '0' -- When '1', bypass LP filter (EQ direct to output)
   );
 end entity;
 
@@ -95,8 +94,8 @@ architecture rtl of tdc_adc_top is
   -- Previous value (180) still saw peaks at +31872 (near +32767 limit)
   constant C_DEFAULT_COARSE_BIAS : unsigned(7 downto 0) := to_unsigned(220, 8);
 
-  signal coarse_bias     : unsigned(7 downto 0) := C_DEFAULT_COARSE_BIAS;
-  signal coarse_bias_s0  : unsigned(7 downto 0) := C_DEFAULT_COARSE_BIAS;
+  signal coarse_bias    : unsigned(7 downto 0) := C_DEFAULT_COARSE_BIAS;
+  signal coarse_bias_s0 : unsigned(7 downto 0) := C_DEFAULT_COARSE_BIAS;
 
   signal coarse_bias_tdc : unsigned(7 downto 0) := C_DEFAULT_COARSE_BIAS;
 
@@ -109,7 +108,6 @@ architecture rtl of tdc_adc_top is
   signal   tdl_cal_done        : std_logic             := '0';
   signal   tdl_cal_sample_cnt  : unsigned(3 downto 0)  := (others => '0');
   signal   tdl_cal_fine_acc    : unsigned(19 downto 0) := (others => '0');
-  signal   tdl_cal_fine_avg    : unsigned(15 downto 0) := (others => '0');
   signal   tdl_cal_timeout_cnt : unsigned(15 downto 0) := (others => '0');
 
   -- TDL calibration settle counter (moved from variable to signal for timing)
@@ -361,9 +359,9 @@ begin
             -- PWM generation: compare period counter against duty
             -- Pipeline the comparison to meet 400MHz timing
             if sweep_period_cnt < sweep_duty_counter then
-               dac_boot_ff <= '1';
+              dac_boot_ff <= '1';
             else
-               dac_boot_ff <= '0';
+              dac_boot_ff <= '0';
             end if;
 
             -- Increment period counter (wraps at 255)
@@ -801,11 +799,11 @@ begin
     if rising_edge(clk_tdc) then
       -- Start pulse edge detection (local to this process)
       -- Rising edge for TDC latch clearing (matches p_tdc_cdc_src read timing)
-      start_pulse_pi    <= ref_sync2 and not ref_sync2_prev_pi;
-      
+      start_pulse_pi <= ref_sync2 and not ref_sync2_prev_pi;
+
       -- Falling edge for DAC update (to avoid rising-edge coupling glitches)
-      v_start_falling   := not ref_sync2 and ref_sync2_prev_pi;
-      
+      v_start_falling := not ref_sync2 and ref_sync2_prev_pi;
+
       ref_sync2_prev_pi <= ref_sync2;
 
       if reset_tdc = '1' then
@@ -919,7 +917,6 @@ begin
         tdl_cal_done        <= '0';
         tdl_cal_sample_cnt  <= (others => '0');
         tdl_cal_fine_acc    <= (others => '0');
-        tdl_cal_fine_avg    <= (others => '0');
         tdl_cal_timeout_cnt <= (others => '0');
         coarse_bias_cal     <= C_DEFAULT_COARSE_BIAS; -- Reset to default value (101)
         tdl_cal_use_cal     <= '0';     -- Don't use calibrated value until we start adjusting
@@ -982,9 +979,6 @@ begin
         -- PIPELINE STAGE 2: Use registered sum for comparisons (1 cycle later)
         -- =====================================================================
         if tdl_cal_sum_valid = '1' and tdl_cal_last_sample = '1' then
-          -- Compute average (divide by 8 = shift right 3)
-          tdl_cal_fine_avg <= resize(shift_right(tdl_cal_sum_reg, 3), 16);
-
           -- Check if centered (within tolerance: 24576 to 40960 = 32768 ± 8192)
           -- Using pre-computed thresholds scaled by 8
           if tdl_cal_sum_reg >= C_THRESH_LOW and tdl_cal_sum_reg <= C_THRESH_HIGH then
@@ -1078,26 +1072,15 @@ begin
 
   -- Multi-Bit TDC Accumulator/Decimator
   p_tdc_multibit_decimator : process(clk_sys)
-    variable v_dec_cnt       : integer range 0 to 100000          := 0;
-    function calc_log2(val : positive) return natural is
-      variable v_temp   : integer range 1 to 2 ** 30 := 1;
-      variable v_result : integer range 0 to 30      := 0;
-    begin
-      while v_temp < val loop
-        v_temp   := v_temp * 2;
-        v_result := v_result + 1;
-      end loop;
-      return v_result;
-    end function;
-    constant C_DEC_SHIFT     : natural                            := calc_log2(GC_DECIMATION);
+    variable v_dec_cnt       : integer range 0 to 100000  := 0;
     variable v_acc_sum       : signed(C_TDC_ACC_WIDTH - 1 downto 0);
     variable v_avg           : signed(C_TDC_ACC_WIDTH - 1 downto 0);
     variable v_multibit_q    : signed(19 downto 0); -- Widened from GC_DATA_WIDTH
     variable v_dac_contrib   : signed(19 downto 0); -- Widened
     variable v_tdc_contrib   : signed(19 downto 0); -- Widened
     variable v_center_dyn    : signed(GC_TDC_OUTPUT - 1 downto 0);
-    constant C_DAC_AMPLITUDE : signed(19 downto 0) := to_signed(21845, 20); -- Correct amplitude: 384 * 21845 / 256 = 32767 (full Q15 range)
-    variable v_sample_cnt    : integer range 0 to 1000000         := 0; -- Per-sample counter for debug rate-limiting
+    constant C_DAC_AMPLITUDE : signed(19 downto 0)        := to_signed(21845, 20); -- Correct amplitude: 384 * 21845 / 256 = 32767 (full Q15 range)
+    variable v_sample_cnt    : integer range 0 to 1000000 := 0; -- Per-sample counter for debug rate-limiting
   begin
     if rising_edge(clk_sys) then
       if reset = '1' then
@@ -1208,14 +1191,14 @@ begin
         if new_sample_sys = '1' and cal_done_sys = '1' then
           -- Rate limit the output to ~5kHz (50MHz / 10000)
           if v_mon_count >= 10000 then
-             v_mon_count    := 0;
-             tdc_mon_code   <= tdc_out_sys;
-             tdc_mon_center <= resize(shift_right(tdc_center_runtime, 16), GC_TDC_OUTPUT);
-             tdc_mon_diff   <= tdc_out_sys - resize(shift_right(tdc_center_runtime, 16), GC_TDC_OUTPUT);
-             tdc_mon_dac    <= dac_bitstream_hold;
-             tdc_mon_valid  <= '1';
+            v_mon_count    := 0;
+            tdc_mon_code   <= tdc_out_sys;
+            tdc_mon_center <= resize(shift_right(tdc_center_runtime, 16), GC_TDC_OUTPUT);
+            tdc_mon_diff   <= tdc_out_sys - resize(shift_right(tdc_center_runtime, 16), GC_TDC_OUTPUT);
+            tdc_mon_dac    <= dac_bitstream_hold;
+            tdc_mon_valid  <= '1';
           else
-             v_mon_count := v_mon_count + 1;
+            v_mon_count := v_mon_count + 1;
           end if;
         end if;
       end if;
@@ -1257,8 +1240,8 @@ begin
   begin
     if rising_edge(clk_sys) then
       if reset = '1' then
-        dac_sync0 <= '0';
-        dac_sync1 <= '0';
+        dac_sync0    <= '0';
+        dac_sync1    <= '0';
         dac_dbg_hold <= '0';
       else
         -- 2-FF synchronizer for DAC bit (completely independent of TDC path)
@@ -1357,18 +1340,8 @@ begin
   -- The TDC provides sub-LSB resolution that complements the 1-bit DAC stream
   -- ========================================================================
   p_tdc_contrib_acc : process(clk_sys)
-    variable v_tdc_contrib : signed(GC_DATA_WIDTH - 1 downto 0);
-    variable v_center_dyn  : signed(GC_TDC_OUTPUT - 1 downto 0);
-    function calc_log2(val : positive) return natural is
-      variable v_temp   : integer range 1 to 2 ** 30 := 1;
-      variable v_result : integer range 0 to 30      := 0;
-    begin
-      while v_temp < val loop
-        v_temp   := v_temp * 2;
-        v_result := v_result + 1;
-      end loop;
-      return v_result;
-    end function;
+    variable v_tdc_contrib      : signed(GC_DATA_WIDTH - 1 downto 0);
+    variable v_center_dyn       : signed(GC_TDC_OUTPUT - 1 downto 0);
     -- scaling: Use fixed shift of 13 for Decimation 8192 (Power of 2)
     -- 8192 = 2^13. Division by 2^13 gives Unity Gain for simple accumulation.
     constant C_DEC_SHIFT        : natural := 13;
@@ -1401,7 +1374,7 @@ begin
           -- Runtime tracking (v_center_dyn) acts as a High-Pass filter, removing 
           -- valid DC corrections from the TDC, causing 'droop' at mid-scale.
           -- Using calibrated center enables true DC linearity correction.
-          v_center_dyn := tdc_center_cal; 
+          v_center_dyn := tdc_center_cal;
 
           -- TDC contribution: (TDC - cal_center) / 32 (shift 5)
           -- Reduced gain to prevent mid-scale over-correction that was pulling ~0.3-0.5V low.
@@ -1411,9 +1384,8 @@ begin
             -- Apply Gain x48 (x32 + x16) to match DAC scale
             -- v_tdc_contrib := (TDC - Center) * 48
             v_tdc_contrib := resize(
-                                shift_left(tdc_out_sys - resize(v_center_dyn, GC_TDC_OUTPUT), C_TDC_GAIN_SHIFT_5) + 
-                                shift_left(tdc_out_sys - resize(v_center_dyn, GC_TDC_OUTPUT), C_TDC_GAIN_SHIFT_4), 
-                             GC_DATA_WIDTH);
+              shift_left(tdc_out_sys - resize(v_center_dyn, GC_TDC_OUTPUT), C_TDC_GAIN_SHIFT_5) + shift_left(tdc_out_sys - resize(v_center_dyn, GC_TDC_OUTPUT), C_TDC_GAIN_SHIFT_4),
+              GC_DATA_WIDTH);
           end if;
 
           -- Check if decimation period complete
@@ -1473,11 +1445,11 @@ begin
   -- After filters are primed: Use CIC/EQ/LP + TDC contribution
   -- ========================================================================
   p_combine_output : process(clk_sys)
-    variable v_lp_signed    : signed(GC_DATA_WIDTH - 1 downto 0);
-    variable v_combined     : signed(GC_DATA_WIDTH + 1 downto 0);
-    variable v_tdc_only     : signed(GC_DATA_WIDTH - 1 downto 0);
-    variable v_combined_cnt : integer range 0 to 1000000 := 0; -- Counter for rate-limiting COMBINED_OUT debug
-    variable v_mon_prescaler: unsigned(1 downto 0) := (others => '0'); -- Prescaler for monitor output (4x decimation)
+    variable v_lp_signed     : signed(GC_DATA_WIDTH - 1 downto 0);
+    variable v_combined      : signed(GC_DATA_WIDTH + 1 downto 0);
+    variable v_tdc_only      : signed(GC_DATA_WIDTH - 1 downto 0);
+    variable v_combined_cnt  : integer range 0 to 1000000 := 0; -- Counter for rate-limiting COMBINED_OUT debug
+    variable v_mon_prescaler : unsigned(1 downto 0)       := (others => '0'); -- Prescaler for monitor output (4x decimation)
   begin
     if rising_edge(clk_sys) then
       if reset = '1' then
@@ -1485,6 +1457,7 @@ begin
         combined_valid_out <= '0';
         mv_code            <= (others => '0');
         v_combined_cnt     := 0;
+        v_mon_prescaler    := (others => '0');
       else
         combined_valid_out <= '0';      -- Default
 
@@ -1514,25 +1487,25 @@ begin
             -- The tdc_contrib_held was captured when tdc_contrib_valid fired
             -- DEBUG: When C_DISABLE_TDC_CONTRIB=true, skip TDC to isolate CIC path
             if disable_tdc_contrib = '1' then
-                v_combined := resize(v_lp_signed, GC_DATA_WIDTH + 2);
+              v_combined := resize(v_lp_signed, GC_DATA_WIDTH + 2);
             else
-                -- SIGN FIX: Subtract TDC contribution!
-                -- Higher Input -> Faster Integration -> Shorter Time -> Smaller TDC Code.
-                -- Start pulse is fixed. Comparator trips earlier.
-                -- TDC = Stop - Start. Smaller TDC means "Turned ON earlier".
-                -- If it turns on earlier, it means input was HIGH.
-                -- So Smaller TDC = Higher Input.
-                -- Correlation is Inverted.
-                -- We want Higher Input -> Higher Output.
-                -- So we must Negate TDC?
-                -- Wait. If TDC is small (Higher Input), we want to ADD positive value?
-                -- Result = Base (Rough) + Correction.
-                -- If Base is "Average".
-                -- Let's stick to the Sawtooth evidence:
-                -- 0.4V -> 0.6V (Too High) -> TDC was adding positive value.
-                -- 0.5V -> 0.4V (Too Low) -> TDC was adding negative value (or small positive).
-                -- Flipping the sign is the correct move for sawtooth inversion.
-                v_combined := resize(v_lp_signed, GC_DATA_WIDTH + 2) - resize(tdc_contrib_held, GC_DATA_WIDTH + 2);
+              -- SIGN FIX: Subtract TDC contribution!
+              -- Higher Input -> Faster Integration -> Shorter Time -> Smaller TDC Code.
+              -- Start pulse is fixed. Comparator trips earlier.
+              -- TDC = Stop - Start. Smaller TDC means "Turned ON earlier".
+              -- If it turns on earlier, it means input was HIGH.
+              -- So Smaller TDC = Higher Input.
+              -- Correlation is Inverted.
+              -- We want Higher Input -> Higher Output.
+              -- So we must Negate TDC?
+              -- Wait. If TDC is small (Higher Input), we want to ADD positive value?
+              -- Result = Base (Rough) + Correction.
+              -- If Base is "Average".
+              -- Let's stick to the Sawtooth evidence:
+              -- 0.4V -> 0.6V (Too High) -> TDC was adding positive value.
+              -- 0.5V -> 0.4V (Too Low) -> TDC was adding negative value (or small positive).
+              -- Flipping the sign is the correct move for sawtooth inversion.
+              v_combined := resize(v_lp_signed, GC_DATA_WIDTH + 2) - resize(tdc_contrib_held, GC_DATA_WIDTH + 2);
             end if;
 
             -- Saturate to output range
@@ -1543,7 +1516,7 @@ begin
             else
               combined_data_out <= resize(v_combined, GC_DATA_WIDTH);
             end if;
-            
+
             -- Monitor Output Decimation (Reduce rate to prevent UART Overflow)
             -- 260kHz -> 65kHz (4x decimation)
             v_mon_prescaler := v_mon_prescaler + 1;

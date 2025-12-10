@@ -133,10 +133,20 @@ begin
                 trigger_enable     => '1', -- Always enabled in testbench
                 open_loop_dac_duty => open_loop_dac, -- For characterization tests
 
-                sample_data        => sample_data,
-                sample_valid       => sample_valid,
-                debug_tdc_out      => debug_tdc_out,
-                debug_tdc_valid    => debug_tdc_valid
+                sample_data         => sample_data,
+                sample_valid        => sample_valid,
+                debug_tdc_out       => debug_tdc_out,
+                debug_tdc_valid     => debug_tdc_valid,
+                -- TDC monitor outputs (not used in this testbench)
+                tdc_monitor_code    => open,
+                tdc_monitor_center  => open,
+                tdc_monitor_diff    => open,
+                tdc_monitor_dac     => open,
+                tdc_monitor_valid   => open,
+                -- Runtime control (not used in this testbench)
+                disable_tdc_contrib => '0',
+                disable_eq_filter   => '0',
+                disable_lp_filter   => '0'
             );
     end generate;
 
@@ -444,11 +454,9 @@ begin
         -- crossing_time = 8ns + C_GAIN_NS_V * (Vp - Vn)
         -- With only 8 ticks (20ns period), resolution is ~2.5ns per tick
         -- Using ~3ns/V gain gives reasonable resolution within period
-        constant C_GAIN_NS_V      : real      := 3.0; -- ns per volt for 50MHz operation
         constant C_SWEEP_END_TIME : time      := 70 us; -- Sweep ends around this time
         variable v_verr           : real      := 0.0; -- Voltage error (Vp - Vn)
         variable v_cross_ns       : real      := 250.0; -- Crossing time in ns
-        variable v_cross_time     : time      := 250 ns; -- Crossing time
         variable v_pulse_count    : integer   := 0;
         variable v_in_sweep       : boolean   := true; -- True during sweep phase
         variable v_final          : std_logic := '0'; -- Final state for this period
@@ -696,7 +704,6 @@ begin
             variable v_mean_mv      : integer;
             variable v_variation_mv : integer;
             variable v_expected_mv  : integer;
-            variable v_tolerance    : integer;
             variable v_error_mv     : integer;
             variable v_min_mv       : integer;
             variable v_max_mv       : integer;

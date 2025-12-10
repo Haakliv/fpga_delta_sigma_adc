@@ -826,6 +826,9 @@ begin
         calib_hist_read_d1     <= (others => '0');
         calib_search_idx_d1    <= 0;
         calib_hist_read_addr   <= 0;
+        calib_hist_idx_d3      <= 0;
+        calib_hist_update_d3   <= '0';
+        calib_hist_value_d3    <= (others => '0');
 
       else
         -- Increment delay counter and set ready flag when it expires (breaks timing path)

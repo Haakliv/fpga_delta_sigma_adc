@@ -66,6 +66,7 @@ begin
             GC_DATA_WIDTH => C_DATA_WIDTH,
             GC_TDC_OUTPUT => C_TDC_WIDTH,
             GC_SIM        => true,
+            GC_FAST_SIM   => true,      -- Fast boot for characterization
             GC_OPEN_LOOP  => true       -- CRITICAL: Open-loop for characterization
         )
         port map(
@@ -76,11 +77,21 @@ begin
             comparator_in      => s_comparator_out,
             dac_out_bit        => open,  -- Not monitored in characterization
             trigger_enable     => '1',
-            open_loop_dac_duty => open_loop_dac,
-            sample_data        => open,  -- Not monitored in characterization
-            sample_valid       => open,  -- Not monitored in characterization
-            debug_tdc_out      => debug_tdc_out,
-            debug_tdc_valid    => debug_tdc_valid
+            open_loop_dac_duty  => open_loop_dac,
+            sample_data         => open,  -- Not monitored in characterization
+            sample_valid        => open,  -- Not monitored in characterization
+            debug_tdc_out       => debug_tdc_out,
+            debug_tdc_valid     => debug_tdc_valid,
+            -- TDC monitor outputs (not used in characterization)
+            tdc_monitor_code    => open,
+            tdc_monitor_center  => open,
+            tdc_monitor_diff    => open,
+            tdc_monitor_dac     => open,
+            tdc_monitor_valid   => open,
+            -- Runtime control (not used in characterization)
+            disable_tdc_contrib => '0',
+            disable_eq_filter   => '0',
+            disable_lp_filter   => '0'
         );
 
     -- ========================================================================

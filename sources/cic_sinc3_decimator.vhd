@@ -37,13 +37,13 @@ architecture rtl of cic_sinc3_decimator is
 
   -- Detect if decimation is power-of-2 for fast shift instead of division
   function is_power_of_2(n : positive) return boolean is
-    variable v : positive := n;
+    variable v_x : integer range 1 to integer'high := n;
   begin
-    while v > 1 loop
-      if (v mod 2) /= 0 then
+    while v_x > 1 loop
+      if (v_x mod 2) /= 0 then
         return false;
       end if;
-      v := v / 2;
+      v_x := v_x / 2;
     end loop;
     return true;
   end function;

@@ -61,7 +61,6 @@ architecture rtl of axe5000_top is
   -- Capture module signals
   signal capture_start    : std_logic := '0';
   signal capture_dump     : std_logic := '0';
-  signal capture_active   : std_logic;
   signal capture_done     : std_logic;
   signal dump_active      : std_logic;
   signal dump_data        : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
@@ -178,7 +177,8 @@ begin
       GC_DATA_WIDTH => C_ADC_DATA_WIDTH,
       GC_TDC_OUTPUT => 16,
       GC_SIM        => false,
-      GC_OPEN_LOOP  => false  -- Normal closed-loop operation
+      GC_FAST_SIM   => false,  -- Normal boot timeouts
+      GC_OPEN_LOOP  => false   -- Normal closed-loop operation
     )
     port map(
       clk_sys            => sysclk_pd,
@@ -235,8 +235,12 @@ begin
   begin
     if rising_edge(sysclk_pd) then
       if rst = '1' then
-        capture_start <= '0';
-        capture_dump  <= '0';
+        capture_start       <= '0';
+        capture_dump        <= '0';
+        tdc_monitor_mode    <= '0';
+        disable_tdc_contrib <= '0';
+        disable_eq_filter   <= '0';
+        disable_lp_filter   <= '0';
       else
         capture_start <= '0';  -- Default: single-cycle pulses
         capture_dump  <= '0';
@@ -293,7 +297,7 @@ begin
         sample_valid  => adc_sample_valid,
         start_capture => capture_start,
         start_dump    => capture_dump,
-        capturing     => capture_active,
+        capturing     => open,  -- Status not used
         capture_done  => capture_done,
         dumping       => dump_active,
         dump_done     => open,  -- Status signal available but not currently monitored
@@ -313,7 +317,6 @@ begin
     -- No capture module - direct connection
     streamer_data  <= adc_sample_data;
     streamer_valid <= adc_sample_valid;
-    capture_active <= '0';
     capture_done   <= '0';
     dump_active    <= '0';
   end generate;
@@ -334,7 +337,6 @@ begin
       tdc_monitor_dac    => tdc_mon_dac,
       tdc_monitor_valid  => tdc_mon_valid,
       adc_data_out       => signed(adc_sample_data),
-      adc_data_valid     => adc_sample_valid,
       uart_tx_data       => tdc_uart_data,
       uart_tx_valid      => tdc_uart_valid,
       uart_tx_ready      => tdc_uart_ready

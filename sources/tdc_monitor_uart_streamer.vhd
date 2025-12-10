@@ -22,52 +22,48 @@ use ieee.numeric_std.all;
 
 entity tdc_monitor_uart_streamer is
     generic(
-        GC_TDC_WIDTH    : positive := 16;
-        GC_ADC_WIDTH    : positive := 16;
-        GC_DECIMATION   : positive := 256  -- Decimate monitor samples for UART bandwidth
+        GC_TDC_WIDTH  : positive := 16;
+        GC_ADC_WIDTH  : positive := 16;
+        GC_DECIMATION : positive := 256 -- Decimate monitor samples for UART bandwidth
     );
     port(
-        clk   : in std_logic;
-        reset : in std_logic;
-
+        clk                : in  std_logic;
+        reset              : in  std_logic;
         -- TDC monitor inputs
-        tdc_monitor_code   : in signed(GC_TDC_WIDTH - 1 downto 0);
-        tdc_monitor_center : in signed(GC_TDC_WIDTH - 1 downto 0);
-        tdc_monitor_diff   : in signed(GC_TDC_WIDTH - 1 downto 0);
-        tdc_monitor_dac    : in std_logic;
-        tdc_monitor_valid  : in std_logic;
-
+        tdc_monitor_code   : in  signed(GC_TDC_WIDTH - 1 downto 0);
+        tdc_monitor_center : in  signed(GC_TDC_WIDTH - 1 downto 0);
+        tdc_monitor_diff   : in  signed(GC_TDC_WIDTH - 1 downto 0);
+        tdc_monitor_dac    : in  std_logic;
+        tdc_monitor_valid  : in  std_logic;
         -- ADC output (for voltage estimation)
-        adc_data_out   : in signed(GC_ADC_WIDTH - 1 downto 0);
-        adc_data_valid : in std_logic;
-
+        adc_data_out       : in  signed(GC_ADC_WIDTH - 1 downto 0);
         -- UART transmit interface
-        uart_tx_data  : out std_logic_vector(7 downto 0);
-        uart_tx_valid : out std_logic;
-        uart_tx_ready : in  std_logic
+        uart_tx_data       : out std_logic_vector(7 downto 0);
+        uart_tx_valid      : out std_logic;
+        uart_tx_ready      : in  std_logic
     );
 end entity;
 
 architecture rtl of tdc_monitor_uart_streamer is
 
     -- FSM for packet transmission
-    type t_state is (
-        IDLE,
-        SEND_SYNC0,     -- 0xAA
-        SEND_SYNC1,     -- 0x55
-        SEND_TDC_MSB,   -- tdc_code[15:8]
-        SEND_TDC_LSB,   -- tdc_code[7:0]
-        SEND_CTR_MSB,   -- tdc_center[15:8]
-        SEND_CTR_LSB,   -- tdc_center[7:0]
-        SEND_DIFF_MSB,  -- tdc_diff[15:8]
-        SEND_DIFF_LSB,  -- tdc_diff[7:0]
-        SEND_DAC,       -- dac_bit
-        SEND_ADC_MSB,   -- adc_out[15:8]
-        SEND_ADC_LSB,   -- adc_out[7:0]
-        SEND_CHECKSUM   -- XOR checksum
+    type T_STATE is (
+        ST_IDLE,
+        ST_SEND_SYNC0,                     -- 0xAA
+        ST_SEND_SYNC1,                     -- 0x55
+        ST_SEND_TDC_MSB,                   -- tdc_code[15:8]
+        ST_SEND_TDC_LSB,                   -- tdc_code[7:0]
+        ST_SEND_CTR_MSB,                   -- tdc_center[15:8]
+        ST_SEND_CTR_LSB,                   -- tdc_center[7:0]
+        ST_SEND_DIFF_MSB,                  -- tdc_diff[15:8]
+        ST_SEND_DIFF_LSB,                  -- tdc_diff[7:0]
+        ST_SEND_DAC,                       -- dac_bit
+        ST_SEND_ADC_MSB,                   -- adc_out[15:8]
+        ST_SEND_ADC_LSB,                   -- adc_out[7:0]
+        ST_SEND_CHECKSUM                   -- XOR checksum
     );
 
-    signal state : t_state := IDLE;
+    signal state : T_STATE := ST_IDLE;
 
     -- Decimation counter
     signal decim_counter : unsigned(15 downto 0) := (others => '0');
@@ -93,19 +89,19 @@ begin
     begin
         if rising_edge(clk) then
             if reset = '1' then
-                state         <= IDLE;
-                decim_counter <= (others => '0');
+                state          <= ST_IDLE;
+                decim_counter  <= (others => '0');
                 tdc_code_cap   <= (others => '0');
                 tdc_center_cap <= (others => '0');
                 tdc_diff_cap   <= (others => '0');
                 dac_bit_cap    <= '0';
                 adc_out_cap    <= (others => '0');
-                checksum      <= (others => '0');
-                uart_data     <= (others => '0');
-                uart_valid    <= '0';
+                checksum       <= (others => '0');
+                uart_data      <= (others => '0');
+                uart_valid     <= '0';
             else
                 case state is
-                    when IDLE =>
+                    when ST_IDLE =>
                         uart_valid <= '0';
 
                         -- Wait for TDC monitor sample
@@ -124,103 +120,103 @@ begin
                                 checksum <= (others => '0');
 
                                 -- Start packet transmission
-                                state         <= SEND_SYNC0;
+                                state         <= ST_SEND_SYNC0;
                                 decim_counter <= (others => '0');
                             else
                                 decim_counter <= decim_counter + 1;
                             end if;
                         end if;
 
-                    when SEND_SYNC0 =>
+                    when ST_SEND_SYNC0 =>
                         if uart_tx_ready = '1' then
                             uart_data  <= x"AA";
                             uart_valid <= '1';
-                            state      <= SEND_SYNC1;
+                            state      <= ST_SEND_SYNC1;
                         end if;
 
-                    when SEND_SYNC1 =>
+                    when ST_SEND_SYNC1 =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
                             uart_data  <= x"55";
                             uart_valid <= '1';
-                            state      <= SEND_TDC_MSB;
+                            state      <= ST_SEND_TDC_MSB;
                         end if;
 
-                    when SEND_TDC_MSB =>
+                    when ST_SEND_TDC_MSB =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
-                            uart_data    <= std_logic_vector(tdc_code_cap(15 downto 8));
-                            uart_valid   <= '1';
-                            v_checksum   := checksum xor std_logic_vector(tdc_code_cap(15 downto 8));
-                            checksum     <= v_checksum;
-                            state        <= SEND_TDC_LSB;
+                            uart_data  <= std_logic_vector(tdc_code_cap(15 downto 8));
+                            uart_valid <= '1';
+                            v_checksum := checksum xor std_logic_vector(tdc_code_cap(15 downto 8));
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_TDC_LSB;
                         end if;
 
-                    when SEND_TDC_LSB =>
+                    when ST_SEND_TDC_LSB =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
-                            uart_data    <= std_logic_vector(tdc_code_cap(7 downto 0));
-                            uart_valid   <= '1';
-                            v_checksum   := checksum xor std_logic_vector(tdc_code_cap(7 downto 0));
-                            checksum     <= v_checksum;
-                            state        <= SEND_CTR_MSB;
+                            uart_data  <= std_logic_vector(tdc_code_cap(7 downto 0));
+                            uart_valid <= '1';
+                            v_checksum := checksum xor std_logic_vector(tdc_code_cap(7 downto 0));
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_CTR_MSB;
                         end if;
 
-                    when SEND_CTR_MSB =>
+                    when ST_SEND_CTR_MSB =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
-                            uart_data    <= std_logic_vector(tdc_center_cap(15 downto 8));
-                            uart_valid   <= '1';
-                            v_checksum   := checksum xor std_logic_vector(tdc_center_cap(15 downto 8));
-                            checksum     <= v_checksum;
-                            state        <= SEND_CTR_LSB;
+                            uart_data  <= std_logic_vector(tdc_center_cap(15 downto 8));
+                            uart_valid <= '1';
+                            v_checksum := checksum xor std_logic_vector(tdc_center_cap(15 downto 8));
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_CTR_LSB;
                         end if;
 
-                    when SEND_CTR_LSB =>
+                    when ST_SEND_CTR_LSB =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
-                            uart_data    <= std_logic_vector(tdc_center_cap(7 downto 0));
-                            uart_valid   <= '1';
-                            v_checksum   := checksum xor std_logic_vector(tdc_center_cap(7 downto 0));
-                            checksum     <= v_checksum;
-                            state        <= SEND_DIFF_MSB;
+                            uart_data  <= std_logic_vector(tdc_center_cap(7 downto 0));
+                            uart_valid <= '1';
+                            v_checksum := checksum xor std_logic_vector(tdc_center_cap(7 downto 0));
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_DIFF_MSB;
                         end if;
 
-                    when SEND_DIFF_MSB =>
+                    when ST_SEND_DIFF_MSB =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
-                            uart_data    <= std_logic_vector(tdc_diff_cap(15 downto 8));
-                            uart_valid   <= '1';
-                            v_checksum   := checksum xor std_logic_vector(tdc_diff_cap(15 downto 8));
-                            checksum     <= v_checksum;
-                            state        <= SEND_DIFF_LSB;
+                            uart_data  <= std_logic_vector(tdc_diff_cap(15 downto 8));
+                            uart_valid <= '1';
+                            v_checksum := checksum xor std_logic_vector(tdc_diff_cap(15 downto 8));
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_DIFF_LSB;
                         end if;
 
-                    when SEND_DIFF_LSB =>
+                    when ST_SEND_DIFF_LSB =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
-                            uart_data    <= std_logic_vector(tdc_diff_cap(7 downto 0));
-                            uart_valid   <= '1';
-                            v_checksum   := checksum xor std_logic_vector(tdc_diff_cap(7 downto 0));
-                            checksum     <= v_checksum;
-                            state        <= SEND_DAC;
+                            uart_data  <= std_logic_vector(tdc_diff_cap(7 downto 0));
+                            uart_valid <= '1';
+                            v_checksum := checksum xor std_logic_vector(tdc_diff_cap(7 downto 0));
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_DAC;
                         end if;
 
-                    when SEND_DAC =>
+                    when ST_SEND_DAC =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
@@ -236,42 +232,42 @@ begin
                             else
                                 v_checksum := checksum xor x"00";
                             end if;
-                            checksum <= v_checksum;
-                            state    <= SEND_ADC_MSB;
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_ADC_MSB;
                         end if;
 
-                    when SEND_ADC_MSB =>
+                    when ST_SEND_ADC_MSB =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
-                            uart_data    <= std_logic_vector(adc_out_cap(15 downto 8));
-                            uart_valid   <= '1';
-                            v_checksum   := checksum xor std_logic_vector(adc_out_cap(15 downto 8));
-                            checksum     <= v_checksum;
-                            state        <= SEND_ADC_LSB;
+                            uart_data  <= std_logic_vector(adc_out_cap(15 downto 8));
+                            uart_valid <= '1';
+                            v_checksum := checksum xor std_logic_vector(adc_out_cap(15 downto 8));
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_ADC_LSB;
                         end if;
 
-                    when SEND_ADC_LSB =>
+                    when ST_SEND_ADC_LSB =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
-                            uart_data    <= std_logic_vector(adc_out_cap(7 downto 0));
-                            uart_valid   <= '1';
-                            v_checksum   := checksum xor std_logic_vector(adc_out_cap(7 downto 0));
-                            checksum     <= v_checksum;
-                            state        <= SEND_CHECKSUM;
+                            uart_data  <= std_logic_vector(adc_out_cap(7 downto 0));
+                            uart_valid <= '1';
+                            v_checksum := checksum xor std_logic_vector(adc_out_cap(7 downto 0));
+                            checksum   <= v_checksum;
+                            state      <= ST_SEND_CHECKSUM;
                         end if;
 
-                    when SEND_CHECKSUM =>
+                    when ST_SEND_CHECKSUM =>
                         if uart_valid = '1' and uart_tx_ready = '1' then
                             uart_valid <= '0';
                         end if;
                         if uart_valid = '0' or uart_tx_ready = '1' then
                             uart_data  <= checksum;
                             uart_valid <= '1';
-                            state      <= IDLE;
+                            state      <= ST_IDLE;
                         end if;
 
                 end case;
