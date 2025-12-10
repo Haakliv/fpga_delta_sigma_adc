@@ -35,19 +35,8 @@ entity reset_synchronizer is
 end entity reset_synchronizer;
 
 architecture rtl of reset_synchronizer is
-
-  -- Synthesis attributes for Intel/Altera FPGAs
-  attribute altera_attribute : string;
-
   -- Scalar synchronizer chain instead of vector (avoids CDC-50006 "bus CDC" warning)
   signal sync0, sync1, sync2, sync3 : std_logic := '0';
-
-  -- Intel recommended attributes for each synchronizer stage
-  attribute altera_attribute of sync0 : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
-  attribute altera_attribute of sync1 : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
-  attribute altera_attribute of sync2 : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
-  attribute altera_attribute of sync3 : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
-
 begin
 
   -- Active-low reset variant (NO reset in process - pure shift register)

@@ -34,7 +34,7 @@ architecture rtl of cic_sinc3_decimator is
   -- For non-power-of-2 R, we need multi-cycle division (handled via pipelining)
   -- Note: For large R (e.g. 25600), R^3 exceeds VHDL integer range.
   -- We compute R^3 at runtime for division, not as a constant.
-  
+
   -- Detect if decimation is power-of-2 for fast shift instead of division
   function is_power_of_2(n : positive) return boolean is
     variable v : positive := n;
@@ -47,7 +47,7 @@ architecture rtl of cic_sinc3_decimator is
     end loop;
     return true;
   end function;
-  
+
   constant C_IS_POW2    : boolean := is_power_of_2(GC_DECIMATION);
   constant C_SHIFT_BITS : natural := 3 * clog2(GC_DECIMATION); -- For power-of-2: shift right by 3*log2(R)
 
@@ -77,19 +77,19 @@ architecture rtl of cic_sinc3_decimator is
 
   -- Pipeline registers for scaling stage (4-stage pipeline to meet timing)
   -- Timing path is broken into: upscale -> round_add -> divide -> saturate
-  constant C_WIDE_WIDTH : natural := C_ACC_WIDTH + C_QBITS;
-  
+  constant C_WIDTH : natural := C_ACC_WIDTH + C_QBITS;
+
   -- Stage 1: Upscale (shift left by C_QBITS)
-  signal scale_pipe1       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0');
-  signal scale_pipe1_valid : std_logic := '0';
-  
+  signal scale_pipe1       : signed(C_WIDTH - 1 downto 0) := (others => '0');
+  signal scale_pipe1_valid : std_logic                    := '0';
+
   -- Stage 2: Add rounding offset
-  signal scale_pipe2       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0');
-  signal scale_pipe2_valid : std_logic := '0';
-  
+  signal scale_pipe2       : signed(C_WIDTH - 1 downto 0) := (others => '0');
+  signal scale_pipe2_valid : std_logic                    := '0';
+
   -- Stage 3: Division by R^3
-  signal scale_pipe3       : signed(C_WIDE_WIDTH - 1 downto 0) := (others => '0');
-  signal scale_pipe3_valid : std_logic := '0';
+  signal scale_pipe3       : signed(C_WIDTH - 1 downto 0) := (others => '0');
+  signal scale_pipe3_valid : std_logic                    := '0';
 
   -- Output register
   signal y_out   : signed(GC_OUTPUT_WIDTH - 1 downto 0) := (others => '0');
@@ -152,9 +152,10 @@ begin
   end process;
 
   -- ========================================================================
-  -- Pipeline Stage 1: Comb filters @ decimated rate (3-CYCLE PIPELINE)
+  -- Comb filters @ decimated rate (3-CYCLE SEQUENTIAL STATE MACHINE)
   -- ========================================================================
-  -- Performs the three differentiation stages across 3 clock cycles
+  -- Performs the three differentiation stages sequentially across 3 clock cycles
+  -- NOTE: This is NOT a pipeline - only one sample is processed at a time.
   -- This happens only when dec_pulse = '1' (every GC_DECIMATION cycles)
   -- Cycle 1: comb1 = decimated - comb1_d
   -- Cycle 2: comb2 = comb1 - comb2_d
@@ -209,30 +210,32 @@ begin
   end process;
 
   -- ========================================================================
-  -- Pipeline Stage 2: Q-Format Scaling and Saturation (4-STAGE PIPELINE)
+  -- Q-Format Scaling and Saturation (TRUE 4-STAGE PIPELINE)
   -- ========================================================================
   -- Scale CIC output by R^3 while preserving fractional bits (Q-format)
   -- 
-  -- TIMING FIX: Split into 4 pipeline stages to break critical path:
+  -- TIMING FIX: Split into 4 pipeline stages to break critical path.
+  -- This is a TRUE pipeline - multiple samples can be in-flight simultaneously.
   --   Stage 1: Upscale by 2^Q (bit shift - fast)
   --   Stage 2: Add rounding offset (wide addition - was timing critical)
   --   Stage 3: Divide by R^3 (division/shift)
   --   Stage 4: Saturate to output width
   --
-  -- With R=64, we have 64 clock cycles between samples, so 4 cycles latency
-  -- is negligible. This breaks the path: upscale+round+divide+saturate into
-  -- separate registered stages.
+  -- With R=25600, we have 25600 clock cycles between samples, so 4+3=7 cycles
+  -- total latency is negligible. This breaks the path: upscale+round+divide+
+  -- saturate into separate registered stages, allowing max clock frequency.
   --
   -- Result: Output is signed Q-format where full-scale ±1.0 → ±(2^(W-1)-1)
   -- ========================================================================
   p_scale_stage : process(clk)
     -- Compute R^3 at runtime (variables support larger values than constants)
     variable v_r_cubed      : signed(63 downto 0);
-    variable v_round_offset : signed(C_WIDE_WIDTH - 1 downto 0);
-    -- Division operands (constrained to 63-bit to satisfy LPM_WIDTHN/D <= 64)
-    variable v_dividend     : signed(62 downto 0);
-    variable v_divisor      : signed(62 downto 0);
-    variable v_quotient     : signed(62 downto 0);
+    variable v_round_offset : signed(C_WIDTH - 1 downto 0);
+    -- Division-by-constant optimization: multiply by reciprocal instead of divide
+    -- Compute (1/R^3) * 2^48 as a scaled reciprocal, then multiply and shift
+    constant C_RECIP_SCALE  : positive := 48; -- Scale factor for reciprocal precision
+    variable v_recip        : signed(63 downto 0); -- Reciprocal: (2^48 / R^3)
+    variable v_product      : signed(C_WIDTH + 64 - 1 downto 0); -- Multiplication result
   begin
     if rising_edge(clk) then
       if reset = '1' then
@@ -247,13 +250,13 @@ begin
       else
         -- Compute R^3 as 64-bit signed (handles large decimation ratios like 25600)
         -- Perform multiplications with intermediate resizing to avoid 192-bit intermediate
-        v_r_cubed := resize(to_signed(GC_DECIMATION, 32) * to_signed(GC_DECIMATION, 32), 64);
-        v_r_cubed := resize(v_r_cubed * to_signed(GC_DECIMATION, 32), 64);
-        v_round_offset := resize(shift_right(v_r_cubed, 1), C_WIDE_WIDTH);
+        v_r_cubed      := resize(to_signed(GC_DECIMATION, 32) * to_signed(GC_DECIMATION, 32), 64);
+        v_r_cubed      := resize(v_r_cubed * to_signed(GC_DECIMATION, 32), 64);
+        v_round_offset := resize(shift_right(v_r_cubed, 1), C_WIDTH);
         -- ====== Pipeline Stage 1: Upscale by 2^Q ======
         -- Shift left to preserve fractional bits in Q-format
         if comb3_valid = '1' then
-          scale_pipe1       <= shift_left(resize(comb3_out, C_WIDE_WIDTH), C_QBITS);
+          scale_pipe1       <= shift_left(resize(comb3_out, C_WIDTH), C_QBITS);
           scale_pipe1_valid <= '1';
         else
           scale_pipe1_valid <= '0';
@@ -275,17 +278,20 @@ begin
 
         -- ====== Pipeline Stage 3: Divide by R^3 ======
         -- For power-of-2: bit shift (fast)
-        -- For non-power-of-2: exact division (synthesis uses DSP)
-        -- Constrain division to 63-bit operands (LPM_WIDTHN/D must be <= 64)
+        -- For non-power-of-2: multiply by reciprocal (much faster than division!)
+        --   Instead of: result = value / R^3
+        --   We compute: result = (value * (2^48 / R^3)) >> 48
+        -- This uses a DSP multiplier instead of a multi-cycle divider
         if scale_pipe2_valid = '1' then
           if C_IS_POW2 then
             scale_pipe3 <= shift_right(scale_pipe2, C_SHIFT_BITS);
           else
-            -- Use 63-bit operands to stay under LPM divider limit
-            v_dividend := resize(scale_pipe2, 63);
-            v_divisor := resize(v_r_cubed, 63);
-            v_quotient := v_dividend / v_divisor;
-            scale_pipe3 <= resize(v_quotient, scale_pipe3'length);
+            -- Compute reciprocal: (2^48) / R^3
+            v_recip   := shift_left(to_signed(1, 64), C_RECIP_SCALE) / v_r_cubed;
+            -- Multiply by reciprocal (hardware-efficient: single DSP block)
+            v_product := scale_pipe2 * v_recip;
+            -- Shift right to normalize (remove 2^48 scaling)
+            scale_pipe3 <= resize(shift_right(v_product, C_RECIP_SCALE), scale_pipe3'length);
           end if;
           scale_pipe3_valid <= '1';
         else

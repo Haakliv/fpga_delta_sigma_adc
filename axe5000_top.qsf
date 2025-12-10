@@ -126,3 +126,6 @@ set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_uart_streamer|uart_tx_
 # LED1 is not currently used in design - suppress stuck pin warning
 set_instance_assignment -name MESSAGE_DISABLE 13410 -to LED1 -entity axe5000_top
 set_instance_assignment -name MESSAGE_DISABLE 13024 -to LED1 -entity axe5000_top
+set_instance_assignment -name SLEW_RATE 3 -to TEST_PIN -entity axe5000_top
+set_instance_assignment -name OUTPUT_TERMINATION OFF -to TEST_PIN -entity axe5000_top
+set_instance_assignment -name OUTPUT_TERMINATION OFF -to FEEDBACK_OUT -entity axe5000_top
