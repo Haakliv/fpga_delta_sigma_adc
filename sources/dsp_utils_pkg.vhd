@@ -19,7 +19,7 @@ package dsp_utils_pkg is
     function saturate(x : signed; result_width : positive) return signed;
 
     -- Map 1-bit input to bipolar signed value
-    -- '1' → +1, '0' → -1
+    -- '1' -> +1, '0' -> -1
     -- Generic width parameter allows use with different accumulator sizes
     function map_bipolar(b : std_logic; width : positive) return signed;
 
@@ -78,7 +78,7 @@ package body dsp_utils_pkg is
     end function;
 
     -- Map 1-bit input to bipolar signed value
-    -- '1' → +1, '0' → -1
+    -- '1' -> +1, '0' -> -1
     function map_bipolar(b : std_logic; width : positive) return signed is
         variable v_one : signed(width - 1 downto 0) := (others => '0');
     begin

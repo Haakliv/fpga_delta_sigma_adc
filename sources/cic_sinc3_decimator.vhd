@@ -225,7 +225,7 @@ begin
   -- total latency is negligible. This breaks the path: upscale+round+divide+
   -- saturate into separate registered stages, allowing max clock frequency.
   --
-  -- Result: Output is signed Q-format where full-scale ±1.0 → ±(2^(W-1)-1)
+  -- Result: Output is signed Q-format where full-scale +/-1.0 -> +/-(2^(W-1)-1)
   -- ========================================================================
   p_scale_stage : process(clk)
     -- Compute R^3 at runtime (variables support larger values than constants)

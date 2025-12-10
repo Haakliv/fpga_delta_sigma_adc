@@ -30,6 +30,7 @@ entity axe5000_top is
 
     -- Debug
     TEST_PIN     : out std_logic;
+    LED1         : out std_logic;       -- Debug LED (TDC valid indicator)
     USER_BTN     : in  std_logic;       -- Active low reset
     -- Optional trigger (directly triggers capture when GC_CAPTURE_ENABLED)
     TRIGGER_IN   : in  std_logic := '0' -- Active high trigger for capture start
@@ -61,6 +62,7 @@ architecture rtl of axe5000_top is
   -- Capture module signals
   signal capture_start    : std_logic := '0';
   signal capture_dump     : std_logic := '0';
+  signal capture_active   : std_logic;
   signal capture_done     : std_logic;
   signal dump_active      : std_logic;
   signal dump_data        : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
@@ -71,25 +73,7 @@ architecture rtl of axe5000_top is
   signal streamer_data    : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
   signal streamer_valid   : std_logic;
   
-  -- TDC monitor signals
-  signal tdc_mon_code     : signed(15 downto 0);
-  signal tdc_mon_center   : signed(15 downto 0);
-  signal tdc_mon_diff     : signed(15 downto 0);
-  signal tdc_mon_dac      : std_logic;
-  signal tdc_mon_valid    : std_logic;
-  
-  -- TDC monitor UART signals
-  signal tdc_uart_data    : std_logic_vector(7 downto 0);
-  signal tdc_uart_valid   : std_logic;
-  signal tdc_uart_ready   : std_logic;
-  
-  -- ADC sample streamer UART signals
-  signal adc_uart_data    : std_logic_vector(7 downto 0);
-  signal adc_uart_valid   : std_logic;
-  signal adc_uart_ready   : std_logic;
-  
-  -- TDC monitor mode control
-  signal tdc_monitor_mode    : std_logic := '0';  -- 0=ADC samples, 1=TDC monitor
+  -- Runtime control
   signal disable_tdc_contrib : std_logic := '0';  -- 0=TDC enabled, 1=TDC disabled (CIC-only)
   signal disable_eq_filter   : std_logic := '0';  -- 0=EQ enabled, 1=EQ bypassed
   signal disable_lp_filter   : std_logic := '0';  -- 0=LP enabled, 1=LP bypassed
@@ -137,7 +121,7 @@ begin
 
   -- Debug and DAC outputs
   TEST_PIN     <= adc_sample_valid;     -- Sample valid pulse
-  -- LED1 removed - not needed in design
+  LED1         <= capture_active or dump_active; -- LED shows capture/dump activity
   FEEDBACK_OUT <= w_dac_bit;            -- DAC output with external RC filter
 
   i_niosv : adc_system
@@ -177,8 +161,7 @@ begin
       GC_DATA_WIDTH => C_ADC_DATA_WIDTH,
       GC_TDC_OUTPUT => 16,
       GC_SIM        => false,
-      GC_FAST_SIM   => false,  -- Normal boot timeouts
-      GC_OPEN_LOOP  => false   -- Normal closed-loop operation
+      GC_OPEN_LOOP  => false  -- Normal closed-loop operation
     )
     port map(
       clk_sys            => sysclk_pd,
@@ -200,12 +183,12 @@ begin
       -- Debug outputs (not monitored in production)
       debug_tdc_out      => open,
       debug_tdc_valid    => open,
-      -- TDC Monitor outputs (connected to UART streamer)
-      tdc_monitor_code   => tdc_mon_code,
-      tdc_monitor_center => tdc_mon_center,
-      tdc_monitor_diff   => tdc_mon_diff,
-      tdc_monitor_dac    => tdc_mon_dac,
-      tdc_monitor_valid  => tdc_mon_valid,
+      -- TDC Monitor outputs (not used)
+      tdc_monitor_code   => open,
+      tdc_monitor_center => open,
+      tdc_monitor_diff   => open,
+      tdc_monitor_dac    => open,
+      tdc_monitor_valid  => open,
       -- Runtime control
       disable_tdc_contrib => disable_tdc_contrib,
       disable_eq_filter   => disable_eq_filter,
@@ -235,12 +218,8 @@ begin
   begin
     if rising_edge(sysclk_pd) then
       if rst = '1' then
-        capture_start       <= '0';
-        capture_dump        <= '0';
-        tdc_monitor_mode    <= '0';
-        disable_tdc_contrib <= '0';
-        disable_eq_filter   <= '0';
-        disable_lp_filter   <= '0';
+        capture_start <= '0';
+        capture_dump  <= '0';
       else
         capture_start <= '0';  -- Default: single-cycle pulses
         capture_dump  <= '0';
@@ -257,10 +236,6 @@ begin
               capture_start <= '1';
             when x"44" | x"64" =>  -- 'D' or 'd' = Dump
               capture_dump <= '1';
-            when x"54" | x"74" =>  -- 'T' or 't' = TDC monitor mode
-              tdc_monitor_mode <= '1';
-            when x"41" | x"61" =>  -- 'A' or 'a' = ADC sample mode
-              tdc_monitor_mode <= '0';
             when x"58" | x"78" =>  -- 'X' or 'x' = Toggle TDC contribution
               disable_tdc_contrib <= not disable_tdc_contrib;
             when x"45" | x"65" =>  -- 'E' or 'e' = Toggle EQ filter
@@ -297,7 +272,7 @@ begin
         sample_valid  => adc_sample_valid,
         start_capture => capture_start,
         start_dump    => capture_dump,
-        capturing     => open,  -- Status not used
+        capturing     => capture_active,
         capture_done  => capture_done,
         dumping       => dump_active,
         dump_done     => open,  -- Status signal available but not currently monitored
@@ -317,30 +292,10 @@ begin
     -- No capture module - direct connection
     streamer_data  <= adc_sample_data;
     streamer_valid <= adc_sample_valid;
+    capture_active <= '0';
     capture_done   <= '0';
     dump_active    <= '0';
   end generate;
-
-  -- TDC monitor UART streamer
-  i_tdc_monitor_streamer : entity work.tdc_monitor_uart_streamer
-    generic map(
-      GC_TDC_WIDTH  => 16,
-      GC_ADC_WIDTH  => C_ADC_DATA_WIDTH,
-      GC_DECIMATION => 102400  -- Decimate 50MHz TDC rate to ~488 packets/s (fits 115200 baud)
-    )
-    port map(
-      clk                => sysclk_pd,
-      reset              => rst,
-      tdc_monitor_code   => tdc_mon_code,
-      tdc_monitor_center => tdc_mon_center,
-      tdc_monitor_diff   => tdc_mon_diff,
-      tdc_monitor_dac    => tdc_mon_dac,
-      tdc_monitor_valid  => tdc_mon_valid,
-      adc_data_out       => signed(adc_sample_data),
-      uart_tx_data       => tdc_uart_data,
-      uart_tx_valid      => tdc_uart_valid,
-      uart_tx_ready      => tdc_uart_ready
-    );
 
   -- UART streamer for ADC samples (live or dump mode)
   i_uart_streamer : entity work.uart_sample_streamer
@@ -353,19 +308,9 @@ begin
       rst           => rst,
       sample_data   => streamer_data,
       sample_valid  => streamer_valid,
-      uart_tx_data  => adc_uart_data,
-      uart_tx_valid => adc_uart_valid,
-      uart_tx_ready => adc_uart_ready
+      uart_tx_data  => uart_tx_data,
+      uart_tx_valid => uart_tx_valid,
+      uart_tx_ready => uart_tx_ready
     );
-
-  -- ========================================================================
-  -- UART Mux: Select between ADC samples and TDC monitor
-  -- Command 'T' switches to TDC monitor mode
-  -- Command 'A' switches back to ADC sample mode
-  -- ========================================================================
-  uart_tx_data  <= tdc_uart_data  when tdc_monitor_mode = '1' else adc_uart_data;
-  uart_tx_valid <= tdc_uart_valid when tdc_monitor_mode = '1' else adc_uart_valid;
-  tdc_uart_ready <= uart_tx_ready when tdc_monitor_mode = '1' else '0';
-  adc_uart_ready <= uart_tx_ready when tdc_monitor_mode = '0' else '0';
 
 end architecture rtl;

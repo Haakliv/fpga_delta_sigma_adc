@@ -9,8 +9,7 @@ entity tdc_quantizer is
     GC_TDL_LANES    : positive range 1 to 16 := 4; -- Must be power of 2 for averaging
     GC_TDL_LENGTH   : positive               := 128; -- Taps per TDL lane
     GC_COARSE_BITS  : positive               := 8; -- Coarse counter width
-    GC_OUTPUT_WIDTH : positive               := 16; -- Total TDC output width
-    GC_SIM          : boolean                := false -- Simulation mode: true = explicit delays, false = synthesis
+    GC_OUTPUT_WIDTH : positive               := 16 -- Total TDC output width
   );
   port(
     -- Clocks
@@ -98,20 +97,17 @@ architecture rtl of tdc_quantizer is
   signal analog_crossing : std_logic;
 
   -- Start/Stop arming signals
-  signal ref_phase0_prev       : std_logic                             := '0';
-  signal start_pulse           : std_logic                             := '0';
-  signal armed                 : std_logic                             := '0';
-  signal analog_stop_mark      : std_logic                             := '0';
-  signal inhibit_just_ended    : std_logic                             := '0';
-  signal edge_inhibit          : unsigned(3 downto 0)                  := (others => '0');
-  signal level_at_start_pulse  : std_logic                             := '0';
-  signal stop_level_at_start   : std_logic                             := '0';
-  
-  attribute altera_attribute : string;
+  signal ref_phase0_prev      : std_logic            := '0';
+  signal start_pulse          : std_logic            := '0';
+  signal armed                : std_logic            := '0';
+  signal analog_stop_mark     : std_logic            := '0';
+  signal inhibit_just_ended   : std_logic            := '0';
+  signal edge_inhibit         : unsigned(3 downto 0) := (others => '0');
+  signal level_at_start_pulse : std_logic            := '0';
+  signal stop_level_at_start  : std_logic            := '0';
 
-  -- analog_sync chain: analog_in → clk_tdc domain (3-FF synchronizer for Stop)
+  -- analog_sync chain: analog_in -> clk_tdc domain (3-FF synchronizer for Stop)
   signal analog_sync : std_logic_vector(2 downto 0) := (others => '0');
-  attribute altera_attribute of analog_sync : signal is "-name SYNCHRONIZER_IDENTIFICATION ""FORCED IF ASYNCHRONOUS""";
 
   -- TDL signals
   signal tdl_chains       : T_TDL_THERM_ARRAY;
@@ -151,9 +147,9 @@ architecture rtl of tdc_quantizer is
   signal analog_stop_mark_calib : std_logic                       := '0'; -- Delayed stop_mark for calibration (breaks timing path)
 
   -- Startup delay counter for calibration
-  -- Must wait for tdc_adc_top's boot dither + TB comparator to enter TDC mode (C_SWEEP_END_TIME=70µs in TB)
+  -- Must wait for tdc_adc_top's boot dither + TB comparator to enter TDC mode (C_SWEEP_END_TIME=70us in TB)
   -- Calibration must happen AFTER comparator is generating realistic TDC timing edges
-  constant C_CALIB_DELAY   : natural                          := 40000; -- Wait 40000 cycles (~100µs @ 400MHz) for closed-loop TDC mode
+  constant C_CALIB_DELAY   : natural                          := 40000; -- Wait 40000 cycles (~100us @ 400MHz) for closed-loop TDC mode
   signal   calib_delay_cnt : integer range 0 to C_CALIB_DELAY := 0;
   signal   calib_ready     : std_logic                        := '0'; -- Single-bit flag: '1' when delay expires (breaks timing path)
 
@@ -174,9 +170,9 @@ architecture rtl of tdc_quantizer is
   signal calib_hist_update_d3 : std_logic              := '0'; -- Stage 3: Update enable
 
   -- Pipeline registers to break search comparison timing path
-  signal calib_hist_read_d1    : unsigned(3 downto 0)   := (others => '0'); -- Histogram value read for comparison
-  signal calib_search_idx_d1   : integer range 0 to 255 := 0;
-  signal calib_hist_read_addr  : integer range 0 to 255 := 0; -- Address for histogram read during search
+  signal calib_hist_read_d1   : unsigned(3 downto 0)   := (others => '0'); -- Histogram value read for comparison
+  signal calib_search_idx_d1  : integer range 0 to 255 := 0;
+  signal calib_hist_read_addr : integer range 0 to 255 := 0; -- Address for histogram read during search
 
   -- Pipeline/register helpers for window check
   signal s_vld_pre : std_logic := '0';
@@ -217,7 +213,7 @@ architecture rtl of tdc_quantizer is
   signal adj0_s1                : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- raw - bias0
   signal adjm_s1                : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- raw - (bias-3)
   signal adjp_s1                : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- raw - (bias+3)
-  signal s1a_valid              : std_logic                               := '0'; -- Handshake: Stage-1a→1b
+  signal s1a_valid              : std_logic                               := '0'; -- Handshake: Stage-1a->1b
   -- Stage-1b: Magnitude calculation
   signal mag0_s1b               : unsigned(GC_COARSE_BITS downto 0)       := (others => '0'); -- |adj0|
   signal magm_s1b               : unsigned(GC_COARSE_BITS downto 0)       := (others => '0'); -- |adjm|
@@ -226,7 +222,7 @@ architecture rtl of tdc_quantizer is
   signal adjm_s1b               : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- Copy of adjm for next stage
   signal adjp_s1b               : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- Copy of adjp for next stage
   signal fine_s1b               : unsigned(C_FINE_FRAC_BITS downto 0)     := (others => '0'); -- Copy of fine for tie-breaking
-  signal s1b_valid              : std_logic                               := '0'; -- Handshake: Stage-1b→1c
+  signal s1b_valid              : std_logic                               := '0'; -- Handshake: Stage-1b->1c
   -- Stage-1c: Min-of-three selection
   signal d_used_s1c             : signed(GC_COARSE_BITS downto 0)         := (others => '0'); -- Chosen adjusted coarse
   signal fine_s1c               : unsigned(C_FINE_FRAC_BITS downto 0)     := (others => '0'); -- Fine for dfine construction
@@ -274,8 +270,6 @@ begin
     end if;
   end process;
 
-  -- Note: Time DAC code removed (was disabled via false generate)
-
   -- Start Pulse Generation
   p_start_edge_detect : process(clk_tdc)
   begin
@@ -302,22 +296,11 @@ begin
     if rising_edge(clk_tdc) then
       -- Don't disarm if both start and stop occur in same cycle
       -- When start_pulse='1', always arm (don't check analog_stop_mark)
-      -- This prevents race condition where same-cycle stop would prevent arming
       if start_pulse = '1' then
-        armed               <= '1';     -- Arm on Start (takes priority over same-cycle stop)
-        -- NOTE: stop_level_at_start is now captured in p_stop_sync AFTER inhibit clears
-        -- This fixes edge detection when comparator transitions during inhibit period
-        -- Debug: Report every 20th start pulse to show TDC is receiving reference clocks
-        v_start_count       := v_start_count + 1;
-        if GC_SIM and (v_start_count <= 5 or (v_start_count mod 5000) = 0) then
-          report "TDC_START: pulse #" & integer'image(v_start_count) & " analog_sync=" & std_logic'image(analog_sync(2)) & " sample_ready=" & std_logic'image(sample_ready) & " at " & time'image(now);
-        end if;
-      -- edge_inhibit cleared in p_stop_sync process to avoid multiple drivers
+        armed         <= '1';           -- Arm on Start (takes priority over same-cycle stop)
+        v_start_count := v_start_count + 1;
       elsif (analog_stop_mark = '1' and armed = '1') then
         armed <= '0';                   -- Disarm on Stop (only when start not active)
-        if GC_SIM and (v_start_count <= 5 or (v_start_count mod 5000) = 0) then
-          report "TDC_STOP: analog_stop_mark detected, disarming at " & time'image(now);
-        end if;
       end if;
     end if;
   end process;
@@ -334,8 +317,8 @@ begin
 
       -- Set inhibit on every Start
       if start_pulse = '1' then
-        edge_inhibit <= to_unsigned(6, edge_inhibit'length); -- Blank for 6 cycles (15ns) to mask DAC glitch
-        level_at_start_pulse <= analog_sync(2);              -- Capture state immediately (before inhibit)
+        edge_inhibit         <= to_unsigned(6, edge_inhibit'length); -- Blank for 6 cycles (15ns) to mask DAC glitch
+        level_at_start_pulse <= analog_sync(2); -- Capture state immediately (before inhibit)
       elsif edge_inhibit > to_unsigned(0, edge_inhibit'length) then
         -- Decrement inhibit counter
         edge_inhibit <= edge_inhibit - 1;
@@ -345,20 +328,17 @@ begin
         end if;
       end if;
 
-      -- CRITICAL FIX: Capture reference level AFTER inhibit clears
-      -- This ensures we capture the current comparator state when we actually
-      -- start looking for edges, not 6 cycles earlier when it might be different.
       if inhibit_just_ended = '1' then
         -- Check if edge occurred INSIDE inhibit window
         if analog_sync(2) /= level_at_start_pulse then
-            -- Fast edge detected! It happened while we were blinded.
-            -- Treat as valid stop immediately.
-            analog_stop_mark <= '1';
-            edge_inhibit     <= to_unsigned(2, edge_inhibit'length); -- Inhibit for 2 cycles
+          -- Fast edge detected! It happened while we were blinded.
+          -- Treat as valid stop immediately.
+          analog_stop_mark <= '1';
+          edge_inhibit     <= to_unsigned(2, edge_inhibit'length); -- Inhibit for 2 cycles
         else
-            -- No edge during window, or glitch returned to baseline.
-            -- Normal operation: update baseline for edge detector
-            stop_level_at_start <= analog_sync(2);
+          -- No edge during window, or glitch returned to baseline.
+          -- Normal operation: update baseline for edge detector
+          stop_level_at_start <= analog_sync(2);
         end if;
       end if;
 
@@ -392,7 +372,7 @@ begin
     p_tdl_sample : process(clk_tdc)
     begin
       if rising_edge(clk_tdc) then
-        -- Shift bank chain: current → prev
+        -- Shift bank chain: current -> prev
         tdl_bank_prev(lane)    <= tdl_bank_current(lane);
         tdl_bank_current(lane) <= tdl_chains(lane);
         -- Register prev to break same-edge capture ambiguity
@@ -672,10 +652,6 @@ begin
 
           -- 4) Final modulo wrap if result exceeds 1.0 (can happen after gain > 1.0)
           --    Keep circular statistics consistent for averaging
-          -- Note: With 16-bit unsigned, v_cal_fp can never equal 2^16 (65536)
-          -- since max value is 65535. This check is only needed if we extend
-          -- intermediate precision in the future. Keeping structure for clarity.
-          -- The comparison uses a 17-bit constant to avoid truncation warning.
           if ('0' & v_cal_fp) >= to_unsigned(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS + 1) then
             fine_codes_fp(lane) <= resize(('0' & v_cal_fp) - to_unsigned(2 ** C_FINE_FRAC_BITS, C_FINE_FRAC_BITS + 1), C_FINE_FRAC_BITS);
           else
@@ -706,22 +682,9 @@ begin
   begin
     if rising_edge(clk_tdc) then
       v_ssum      := ('0' & sum01_r) + ('0' & sum23_r);
-      -- Divide by 4 (GC_TDL_LANES=4) → shift right 2
+      -- Divide by 4 (GC_TDL_LANES=4) -> shift right 2
       v_avg       := resize(shift_right(v_ssum, 2), C_FINE_FRAC_BITS);
       fine_avg_fp <= v_avg;
-
-      -- Debug disabled for performance
-      -- synthesis translate_off
-      -- if GC_SIM then
-      --   if v_fine_seen < 100000 then
-      --     v_fine_seen := v_fine_seen + 1;
-      --   end if;
-      --   if (v_fine_seen <= 5) or (v_fine_seen = 100) or (v_fine_seen = 500) or ((v_fine_seen mod 1000) = 0) then
-      --     report "TDC_QUANTIZER Fine [" & integer'image(v_fine_seen) & "]: fine_avg_fp=" & integer'image(to_integer(v_avg)) &
-      --            " (range: 0..65535, center=32768)";
-      --   end if;
-      -- end if;
-      -- synthesis translate_on
     end if;
   end process;
 
@@ -783,16 +746,13 @@ begin
       analog_stop_mark_d7   <= analog_stop_mark_d6; -- Delay 7
       analog_stop_mark_d8   <= analog_stop_mark_d7; -- Delay 8
       analog_stop_mark_pipe <= analog_stop_mark_d8; -- Delay 8 (for coarse delta computation)
-      -- analog_stop_mark_comp moved to p_dcoarse_register for proper alignment with dcoarse_signed_at_comp
 
       if analog_stop_mark_pipe = '1' then
         if signed('0' & stop_coarse_pipe_d8) - signed('0' & start_coarse_pipe_d8) < -128 then
           -- Wraparound detected: add 256 to get correct positive difference
           -- Use 10-bit signed intermediate to avoid TO_SIGNED truncation (256 needs 10 bits as positive signed)
           dcoarse_signed_raw <= resize(
-            resize(signed('0' & stop_coarse_pipe_d8), GC_COARSE_BITS + 2) -
-            resize(signed('0' & start_coarse_pipe_d8), GC_COARSE_BITS + 2) +
-            to_signed(256, GC_COARSE_BITS + 2), GC_COARSE_BITS + 1);
+            resize(signed('0' & stop_coarse_pipe_d8), GC_COARSE_BITS + 2) - resize(signed('0' & start_coarse_pipe_d8), GC_COARSE_BITS + 2) + to_signed(256, GC_COARSE_BITS + 2), GC_COARSE_BITS + 1);
         else
           -- Normal case: use raw difference
           dcoarse_signed_raw <= signed('0' & stop_coarse_pipe_d8) - signed('0' & start_coarse_pipe_d8);
@@ -856,35 +816,16 @@ begin
             end if;
 
             -- Pipeline stage 1: Read histogram using dedicated read index
-            calib_hist_idx_d1   <= v_dcoarse_idx;
-            -- Optimizing RAM inference: ensure synchronous read
-            -- The value will be available in calib_hist_read_stage2 in the next cycle
-            -- calib_hist_value_d1 is actually the address for the read port?
-            -- Wait, the original code looked like it was inferring distributed RAM with async read
-            -- `calib_hist_value_d1 <= calib_histogram(v_dcoarse_idx);`
-            -- If v_dcoarse_idx is registered, this is a synchronous read? No, it's an address register.
-            -- To force Block RAM (or clean timing), we should register the OUTPUT of the read.
-            -- Replacing `calib_hist_value_d1 <= calib_histogram(v_dcoarse_idx)` with logic that
-            -- respects the pipeline.
-            -- The existing code has `calib_hist_value_d2 <= calib_hist_value_d1`.
-            -- Let's stick to the existing pipeline but move the array read to be explicit.
-            -- To fix timing, we can't do much about the read time unless we use BRAM.
-            -- For Distributed RAM (LUTRAM), the read is fast (combinational) after address.
-            -- The path is `dcoarse_for_calib` -> `v_dcoarse_idx` -> `RAM Read` -> `calib_hist_value_d1`.
-            -- This is too deep.
-            -- Fix: Register the ADDRESS first.
-            -- `v_dcoarse_idx` is derived from `dcoarse_for_calib`.
-            -- Let's change `calib_hist_idx_d1` to be that register.
-            -- And perform the read in the NEXT cycle.
+            calib_hist_idx_d1    <= v_dcoarse_idx;
             calib_hist_read_addr <= v_dcoarse_idx;
 
             calib_sample_count <= calib_sample_count + 1;
-          end if; -- analog_stop_mark_calib
-          
+          end if;                       -- analog_stop_mark_calib
+
           -- Pipeline stage 2: Perform the Read (synchronous to address change)
           -- This breaks the timing path from dcoarse logic to memory output
-          calib_hist_value_d1   <= calib_histogram(calib_hist_read_addr);
-          calib_hist_idx_d1     <= calib_hist_read_addr; -- Pass address along pipeline
+          calib_hist_value_d1 <= calib_histogram(calib_hist_read_addr);
+          calib_hist_idx_d1   <= calib_hist_read_addr; -- Pass address along pipeline
 
           -- Pipeline stage 3: Register read value (d2)
           -- Note: shifted pipeline stages d2, d3...
@@ -897,7 +838,7 @@ begin
           end if;
 
           -- Pipeline stage 3: Increment
-          calib_hist_idx_d3   <= calib_hist_idx_d2;
+          calib_hist_idx_d3    <= calib_hist_idx_d2;
           calib_hist_update_d3 <= calib_hist_update_d2;
           if calib_hist_update_d2 = '1' and calib_hist_value_d2 < 15 then
             calib_hist_value_d3 <= calib_hist_value_d2 + 1;
@@ -913,7 +854,6 @@ begin
           -- PHASE 2: After 16 samples, wait two cycles for pipeline flush, then start search
           if calib_sample_count = 18 and calib_searching = '0' then
             -- Initialize search
-            report "CALIB: Starting histogram search (16 samples collected)" severity note;
             calib_searching  <= '1';
             calib_search_idx <= 0;
             calib_max_count  <= (others => '0');
@@ -956,12 +896,9 @@ begin
     end if;                             -- rising_edge
   end process;
 
-  -- Note: Time DAC pipeline code removed (was disabled via false generate)
-
   -- Dual-Lobe Bias Selection
   coarse_bias_effective <= coarse_bias_calibrated when (calib_done = '1') else coarse_bias;
 
-  -- Debug: report when effective bias changes
   p_bias_debug : process(clk_tdc)
     variable v_bias_prev : unsigned(7 downto 0) := (others => '0');
   begin
@@ -1009,10 +946,6 @@ begin
         adj0_s1 <= dcoarse_signed_at_comp - v_b0_s; -- Primary lobe
         adjm_s1 <= dcoarse_signed_at_comp - v_bm_s; -- Lower lobe (bias-3)
         adjp_s1 <= dcoarse_signed_at_comp - v_bp_s; -- Upper lobe (bias+3)
-
-        -- Debug disabled for speed (was TDC_STAGE1A)
-        -- synthesis translate_off
-        -- synthesis translate_on
 
         s1a_valid <= '1';               -- Signal to Stage-1b: fresh data available next cycle
       end if;
@@ -1125,7 +1058,7 @@ begin
         s1d_valid <= '1';
 
       else
-        -- No valid data from Stage-1c → clear pipeline
+        -- No valid data from Stage-1c -> clear pipeline
         s_vld_pre <= '0';
         s1d_valid <= '0';
       end if;
@@ -1182,33 +1115,17 @@ begin
   -- Stage II: Error Computation and Range Check
   p_interval_stage2 : process(clk_tdc)
     variable v_centered : signed(C_TIME_FP_BITS - 1 downto 0);
-    -- synthesis translate_off
-    variable v_s2_seen  : integer range 0 to 100000 := 0; -- Warm-up counter for consistency check (saturates at max)
-    -- synthesis translate_on
   begin
     if rising_edge(clk_tdc) then
       if reset_tdc = '1' then
         s_vld_pipe(1)    <= '0';
         s_win_ok_pipe(1) <= '0';
         s_centered       <= (others => '0');
-        -- synthesis translate_off
-        v_s2_seen        := 0;
-      -- synthesis translate_on
       else
         -- Stage II: Check bit 0 (data from Stage-1b, after TDAC subtraction in same cycle)
         if s_vld_pipe(0) = '1' then
           v_centered := s_delta_meas_adj - C_HALF_COARSE_FP;
           s_centered <= v_centered;
-
-          -- synthesis translate_off
-          if GC_SIM then
-            -- Debug: Report centering details rarely for speed
-            v_s2_seen := v_s2_seen + 1;
-            if (v_s2_seen <= 3) or ((v_s2_seen mod 5000) = 0) then
-              report "TDC_QUANTIZER Stage2 [" & integer'image(v_s2_seen) & "]: " & "delta_meas_adj=" & integer'image(to_integer(s_delta_meas_adj)) & " centered=" & integer'image(to_integer(v_centered)) & " (half_coarse=32768)";
-            end if;
-          end if;
-          -- synthesis translate_on
 
           -- Shift pipeline valids forward one more cycle for Stage III
           s_vld_pipe(1)    <= '1';
@@ -1334,7 +1251,5 @@ begin
   -- TDL Centering Calibration Outputs
   fine_at_comp_out <= fine_at_comp;
   fine_valid_out   <= s1a_valid;
-
-  -- Note: Window failure CDC process removed (win_fail_toggle is driven but not observed)
 
 end architecture;

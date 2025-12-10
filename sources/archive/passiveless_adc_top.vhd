@@ -2,8 +2,8 @@
 -- Pure 1-Bit Delta-Sigma ADC
 -- ************************************************************************
 -- Architecture:
---   Comparator → Digital Integrator → 1-bit DAC feedback
---   CIC Sinc³ Decimator (unity DC gain via internal C_SCALE_SHIFT)
+--   Comparator -> Digital Integrator -> 1-bit DAC feedback
+--   CIC Sinc^3 Decimator (unity DC gain via internal C_SCALE_SHIFT)
 --   FIR Equalizer + Low-pass (DC gain = 1.0)
 --   Q-format voltage conversion: V = (y*600)/2^15 + 600 mV
 -- ************************************************************************
@@ -146,11 +146,9 @@ architecture rtl of passiveless_adc_top is
   -- Signals for Multi-bit Delta-Sigma Loop
   -- ========================================================================
 
-  -- Millivolt conversion for UART output (LP filter → mV)
+  -- Millivolt conversion for UART output (LP filter -> mV)
   signal mv_code : unsigned(15 downto 0) := (others => '0');
 begin
-
-  -- TODO: Dither?
 
   -- ========================================================================
   -- Reset Synchronizer for clk_dsm domain
@@ -186,7 +184,7 @@ begin
   end process;
 
   -- ========================================================================
-  -- TODO: For debug, will be removed - Comparator Duty Cycle Monitor
+  -- Comparator Duty Cycle Monitor (Debug)
   -- ========================================================================
   -- Monitor comp_s2 duty cycle over a fixed window to verify correct operation
   -- This helps diagnose if the feedback loop is working properly
@@ -236,7 +234,7 @@ begin
   end process;
 
   -- ========================================================================
-  -- CDC for 2 MHz Start Pulse (clk_dsm → clk_sys)
+  -- CDC for 2 MHz Start Pulse (clk_dsm -> clk_sys)
   -- ========================================================================
   -- Always-on 2 MHz CE generation from ref_clock (independent of TDC activity)
   -- This ensures CIC continues to run after TDC handoff
@@ -276,7 +274,7 @@ begin
   -- ========================================================================
   -- 
   -- Classic ΔΣ feedback path:
-  --   Vin → [Comparator 1-bit] → [Digital Integrator] → [1-bit DAC] → Vfb → Comparator
+  --   Vin -> [Comparator 1-bit] -> [Digital Integrator] -> [1-bit DAC] -> Vfb -> Comparator
   --                  ↑                                        |
   --                  └────────────────────────────────────────┘
   -- 
@@ -312,7 +310,7 @@ begin
       end if;
 
       -- Stage 1: Compute unclamped sum for next cycle
-      -- comp_s2 = 1 → Vin > Vfb → need higher Vfb → want mod_bit=1
+      -- comp_s2 = 1 -> Vin > Vfb -> need higher Vfb -> want mod_bit=1
       if comp_s2 = '1' then
         v_next_unclamped := integ_reg + C_INTEG_GAIN;
       else
@@ -335,7 +333,7 @@ begin
   -- Convert ADC output to millivolts (0..1200 mV range)
   -- With proper ΔΣ loop: duty cycle of feedback = Vin/VFS
   -- CIC/EQ/LP measure this duty cycle (average) with filtering
-  -- Simple scaling: output_mV = (lp_data × scale_factor) + offset
+  -- Simple scaling: output_mV = (lp_data x scale_factor) + offset
 
   p_mv_from_lp : process(clk_sys)
     variable v_lp_signed : signed(GC_DATA_WIDTH - 1 downto 0);
@@ -350,7 +348,7 @@ begin
         v_mv_count := v_mv_count + 1;
 
         -- Convert signed Q-format [-1, +1) to millivolts [0, 1200]
-        -- CIC already removes its DC gain (R³) internally via C_SCALE_SHIFT
+        -- CIC already removes its DC gain (R^3) internally via C_SCALE_SHIFT
         -- LP output is Q-format: m = y / 2^(W-1)
         -- Voltage mapping: V = 600*m + 600 (NOT 1200*m, which doubles the swing)
         -- Combined: V = (y*600)/2^(W-1) + 600
@@ -387,7 +385,7 @@ begin
   -- This eliminates the 4:1 subsampling aliasing from the old 100MHz approach
   i_cic : entity work.cic_sinc3_decimator
     generic map(
-      GC_DECIMATION   => 256,           -- Decimate 400 MHz → 1.5625 MHz
+      GC_DECIMATION   => 256,           -- Decimate 400 MHz -> 1.5625 MHz
       GC_OUTPUT_WIDTH => GC_DATA_WIDTH
     )
     port map(
@@ -400,7 +398,7 @@ begin
     );
 
   -- ========================================================================
-  -- Toggle-based CDC: CIC output 400 MHz → 100 MHz (related clocks)
+  -- Toggle-based CDC: CIC output 400 MHz -> 100 MHz (related clocks)
   -- ========================================================================
   -- Both clocks are from same PLL, so they have fixed phase relationship.
   -- Use toggle handshake protocol:

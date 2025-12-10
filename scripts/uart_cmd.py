@@ -48,7 +48,7 @@ def send_command(cmd):
                 print("When OFF, ADC runs in CIC-only mode (no TDC fine correction)")
             elif cmd.upper() == 'E':
                 print("EQ filter toggled (on<->off)")
-                print("When OFF, CIC output bypasses equalizer (sinc³ droop not compensated)")
+                print("When OFF, CIC output bypasses equalizer (sinc^3 droop not compensated)")
             elif cmd.upper() == 'L':
                 print("LP filter toggled (on<->off)")
                 print("When OFF, signal bypasses lowpass filter (no anti-aliasing)")

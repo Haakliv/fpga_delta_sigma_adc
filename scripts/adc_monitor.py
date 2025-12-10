@@ -29,9 +29,9 @@ ADC_MAX_VALUE = (1 << ADC_BITS) - 1
 V_REF = 1.25  # Hardware reference voltage (1.3V / 1.045 gain error = 1.244V ≈ 1.25V)
 
 # Voltage scaling for LVDS DAC swing
-# Q15 bipolar: '0' → -1 (0% duty, 0V avg), '1' → +1 (100% duty, ~V_REF avg)
-# Q15: -32768 → 0mV, 0 → V_REF/2 (50% duty), +32767 → V_REF (100% duty)
-V_CENTER_MV = (V_REF / 2) * 1000       # 50% duty → V_REF/2 (comparator center)
+# Q15 bipolar: '0' -> -1 (0% duty, 0V avg), '1' -> +1 (100% duty, ~V_REF avg)
+# Q15: -32768 -> 0mV, 0 -> V_REF/2 (50% duty), +32767 -> V_REF (100% duty)
+V_CENTER_MV = (V_REF / 2) * 1000       # 50% duty -> V_REF/2 (comparator center)
 V_HALF_SCALE_MV = (V_REF / 2) * 1000   # Full 0 to V_REF range
 
 # Calibration coefficients from measured transfer curve

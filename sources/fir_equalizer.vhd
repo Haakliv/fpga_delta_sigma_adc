@@ -1,11 +1,11 @@
 -- ************************************************************************
--- CIC Sinc³ Equalizer (Droop Compensator)
--- Non-decimating FIR that flattens the sinc³ passband response
+-- CIC Sinc^3 Equalizer (Droop Compensator)
+-- Non-decimating FIR that flattens the sinc^3 passband response
 -- 
 -- Design specs:
---   - Compensates sinc³ droop from CIC decimator
+--   - Compensates sinc^3 droop from CIC decimator
 --   - 31-tap symmetric FIR (linear phase)
---   - Passband: DC to ~0.25×Fs (where Fs = fclk/OSR)
+--   - Passband: DC to ~0.25xFs (where Fs = fclk/OSR)
 --   - Quantized to 16-bit coefficients for efficient implementation
 --
 -- Architecture:
@@ -45,14 +45,14 @@ architecture rtl of fir_equalizer is
   -- Coefficient width (Q1.15 fixed-point format)
   constant C_COEF_WIDTH : positive := 16;
 
-  -- 31-tap symmetric sinc³ inverse compensator
-  -- Coefficients designed via firls to flatten CIC's sinc³ droop
+  -- 31-tap symmetric sinc^3 inverse compensator
+  -- Coefficients designed via firls to flatten CIC's sinc^3 droop
   -- Quantized to Q1.15 format, normalized to DC gain = 1.0
   -- Symmetric: use only 16 unique values (center tap + 15 pairs)
   type T_COEF_ARRAY is array (0 to 15) of signed(C_COEF_WIDTH - 1 downto 0);
 
-  -- Sinc³ equalizer coefficients (approximate 1/sinc³(πf/Fs) in passband)
-  -- Designed for passband 0-0.4×Fs with flat response (<0.1dB ripple)
+  -- Sinc^3 equalizer coefficients (approximate 1/sinc^3(pi*f/Fs) in passband)
+  -- Designed for passband 0-0.4xFs with flat response (<0.1dB ripple)
   -- Sum of all 31 coefficients = 32768 (DC gain = 1.0 in Q1.15)
   constant C_COEF : T_COEF_ARRAY := (
     to_signed(316, 16),                 -- h[0] = h[30]
@@ -183,22 +183,22 @@ begin
         acc_reg      <= (others => '0');
         valid_stage3 <= '0';
       elsif valid_stage2 = '1' then
-        -- Level 1: 8 pairs (16→8)
+        -- Level 1: 8 pairs (16->8)
         for i in 0 to 7 loop
           v_level1(i) := resize(prod_reg(2 * i), C_ACC_WIDTH) + resize(prod_reg(2 * i + 1), C_ACC_WIDTH);
         end loop;
 
-        -- Level 2: 4 pairs (8→4)
+        -- Level 2: 4 pairs (8->4)
         for i in 0 to 3 loop
           v_level2(i) := v_level1(2 * i) + v_level1(2 * i + 1);
         end loop;
 
-        -- Level 3: 2 pairs (4→2)
+        -- Level 3: 2 pairs (4->2)
         for i in 0 to 1 loop
           v_level3(i) := v_level2(2 * i) + v_level2(2 * i + 1);
         end loop;
 
-        -- Level 4: Final sum (2→1)
+        -- Level 4: Final sum (2->1)
         acc_reg      <= v_level3(0) + v_level3(1);
         valid_stage3 <= '1';
 

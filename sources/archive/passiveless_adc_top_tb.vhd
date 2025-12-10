@@ -160,10 +160,10 @@ begin
   -- GPIO IP Instantiations (Differential Comparator + DAC Output)
   -- ========================================================================
   -- Drive GPIO directly (no pre-inversion)
-  -- GPIO inverts for N-pin: din='1' → pad_out_b='0', din='0' → pad_out_b='1'
+  -- GPIO inverts for N-pin: din='1' -> pad_out_b='0', din='0' -> pad_out_b='1'
   -- GPIO simulation doesn't invert, but hardware does
   -- So invert here to match hardware behavior
-  -- Result: dac_out_bit='1' → s_din='0' → feedback_n='0' (then RC inverts) → Vfb=HIGH
+  -- Result: dac_out_bit='1' -> s_din='0' -> feedback_n='0' (then RC inverts) -> Vfb=HIGH
   s_din_to_dac(0) <= not dac_out_bit;
 
   -- ========================================================================
@@ -205,7 +205,7 @@ begin
   -- In hardware, the actual gpio_comparator_in IP performs true differential comparison
 
   -- Extract scalar from vector
-  -- NOTE: GPIO simulation model does NOT invert N-pin (just forwards din → pad_out_b)
+  -- NOTE: GPIO simulation model does NOT invert N-pin (just forwards din -> pad_out_b)
   -- Hardware GPIO DOES invert N-pin internally
   -- Testbench RC filter compensates for missing GPIO inversion below (line 431)
   feedback_n <= feedback_n_vec(0);      -- No inversion here
@@ -257,7 +257,7 @@ begin
   -- which is not available in QuestaSim. The timing characteristics below exactly match
   -- the PLL IP configuration (ip/adc_system/iopll.ip).
   --
-  -- V8.4 Enhancement: Add random initial phase, ppm offset, and edge jitter to expose
+  -- Enhancement: Add random initial phase, ppm offset, and edge jitter to expose
   -- closed-loop handoff bugs that only manifest with realistic clock asynchrony.
 
   p_clk_sys : process
@@ -317,7 +317,7 @@ begin
     v_ppm_scale := 1.0 + GC_TB_REF_PPM * 1.0e-6;
 
     while not sim_finished loop
-      -- Add random jitter to rising edge (uniform distribution in ±JIT_RMS range)
+      -- Add random jitter to rising edge (uniform distribution in +/-JIT_RMS range)
       uniform(v_seed1, v_seed2, v_rand);
       v_jitter_ps := (v_rand - 0.5) * 2.0 * GC_TB_JIT_RMS_PS;
       v_jitter    := v_jitter_ps * 1 ps;
@@ -363,7 +363,7 @@ begin
   --   - FPGA I/O bank voltage: 1.2V
   --   - Signal range: 0V to 1.2V (full scale)
   --   - DC_LEVEL: 0.6V (mid-scale, 50% of 1.2V)
-  --   - AMPLITUDE: ±0.3V swing (±25% of 1.2V)
+  --   - AMPLITUDE: +/-0.3V swing (+/-25% of 1.2V)
   --   - Resulting sine: 0.3V to 0.9V (centered at 0.6V)
   -- EVENT-DRIVEN analog generator - eliminates 0.5ns forever loop for DC/square
   -- For sine/ramp, still needs periodic updates but with coarser step
@@ -421,20 +421,20 @@ begin
   -- ========================================================================
   -- DAC Feedback Voltage Model (N-pin voltage) - Exact RC Filter + Slew Rate
   -- ========================================================================
-  -- Real hardware: τ_RC = 0.38ns + slew rate delay ≈ 0.14ns = 0.52ns total
-  -- SLOW slew rate (40Ω): tr ≈ tf ≈ 0.276 ns (20-80%), dV/dt ≈ 3.0 V/ns
+  -- Real hardware: tau_RC = 0.38ns + slew rate delay = 0.14ns = 0.52ns total
+  -- SLOW slew rate (40Ohm): tr = tf = 0.276 ns (20-80%), dV/dt = 3.0 V/ns
   -- 
   -- Using exact discrete-time RC solution for accuracy:
   --   v[n+1] = A*v[n] + (1-A)*v_src
-  --   where A = exp(-T_clk/τ) = exp(-2.5ns/0.52ns) ≈ 0.0055
+  --   where A = exp(-T_clk/tau) = exp(-2.5ns/0.52ns) = 0.0055
   --
-  -- This gives ~1000× better accuracy than crude Δt/τ approximation:
-  --   Before: ±72mV error (tau=10ns, crude update)
-  --   After:  ±10mV error (tau=0.52ns, exact update)
+  -- This gives ~1000x better accuracy than crude Δt/τ approximation:
+  --   Before: +/-72mV error (tau=10ns, crude update)
+  --   After:  +/-10mV error (tau=0.52ns, exact update)
   -- ========================================================================
   p_feedback_voltage : process(clk_tdc)
-    constant C_A      : real := 0.995;  -- exp(-C_TCLK / C_TAU_TOTAL) ≈ exp(-2.5/0.52) ≈ 0.0055
-    constant C_ONE_MA : real := 1.0 - C_A; -- 1 - A ≈ 0.9945
+    constant C_A      : real := 0.995;  -- exp(-C_TCLK / C_TAU_TOTAL) = exp(-2.5/0.52) = 0.0055
+    constant C_ONE_MA : real := 1.0 - C_A; -- 1 - A = 0.9945
 
     variable v_src : real := 0.0;       -- Ideal DAC voltage
   begin
@@ -453,7 +453,7 @@ begin
 
   -- ========================================================================
   -- Analog Voltage to Digital Threshold Crossing (P-pin Input Model)
-  -- v8.4: Variable delay + X-glitch near threshold
+  -- le delay + X-glitch near threshold
   -- ========================================================================
   -- In real hardware, the P-pin (ANALOG_IN) sees an analog voltage (sine wave)
   -- The differential input buffer compares P-pin voltage vs N-pin voltage
@@ -622,7 +622,7 @@ begin
       -- Phase 1 Check: LP filter output stuck-at-zero detection
       -- ========================================================================
       -- CRITICAL: If LP filter outputs constant 0, then CIC/EQ/LP chain is broken
-      -- This causes mV conversion to output 600mV offset → stuck at 0x0258
+      -- This causes mV conversion to output 600mV offset -> stuck at 0x0258
       info("LP_FILTER_RANGE: min=" & integer'image(lp_min_value) & ", max=" & integer'image(lp_max_value) & ", samples=" & integer'image(lp_sample_count));
 
       check(lp_min_value /= 0 or lp_max_value /= 0,
@@ -644,17 +644,17 @@ begin
       -- ========================================================================
       if GC_TB_SIGNAL_TYPE = 1 then
         -- For DC tests, verify the output voltage matches the expected DC level
-        -- Expected voltage = GC_TB_DC_LEVEL × 1200mV (full scale)
+        -- Expected voltage = GC_TB_DC_LEVEL x 1200mV (full scale)
         v_expected_mv := integer(GC_TB_DC_LEVEL * 1200.0);
-        v_tolerance   := 50;            -- ±50mV tolerance (tightened from 100mV)
+        v_tolerance   := 50;            -- +/-50mV tolerance (tightened from 100mV)
         v_mean_mv     := (sample_min_value + sample_max_value) / 2;
 
         -- Calculate RMS noise and ENOB
-        -- RMS noise ≈ spread / (2 * sqrt(3)) for uniform quantization noise
+        -- RMS noise = spread / (2 * sqrt(3)) for uniform quantization noise
         v_variance  := real((sample_max_value - sample_min_value) * (sample_max_value - sample_min_value)) / 12.0;
         v_rms_noise := sqrt(v_variance);
         -- ENOB = log2(Full_Scale_RMS / RMS_Noise) = log2(1200/sqrt(2) / RMS_Noise)
-        -- Full scale RMS = 1200mV / sqrt(2) ≈ 848.5mV
+        -- Full scale RMS = 1200mV / sqrt(2) = 848.5mV
         if v_rms_noise > 0.1 then
           v_enob := log(848.5 / v_rms_noise) / log(2.0);
         else
@@ -673,7 +673,7 @@ begin
         info("========================================");
 
         check(v_mean_mv >= (v_expected_mv - v_tolerance) and v_mean_mv <= (v_expected_mv + v_tolerance),
-              "DC OUTPUT VOLTAGE INCORRECT in " & test_name & ": " & "Expected " & integer'image(v_expected_mv) & "mV ±" & integer'image(v_tolerance) & "mV " & "(DC_LEVEL=" & real'image(GC_TB_DC_LEVEL) & "), " & "but measured " & integer'image(v_mean_mv) & "mV. " & "Error = " & integer'image(v_mean_mv - v_expected_mv) & "mV. " & "Delta-Sigma ADC is not tracking input voltage correctly! ");
+              "DC OUTPUT VOLTAGE INCORRECT in " & test_name & ": " & "Expected " & integer'image(v_expected_mv) & "mV +/-" & integer'image(v_tolerance) & "mV " & "(DC_LEVEL=" & real'image(GC_TB_DC_LEVEL) & "), " & "but measured " & integer'image(v_mean_mv) & "mV. " & "Error = " & integer'image(v_mean_mv - v_expected_mv) & "mV. " & "Delta-Sigma ADC is not tracking input voltage correctly! ");
 
         info("DC VOLTAGE ACCURACY CHECK: **PASS**");
       else
@@ -722,7 +722,7 @@ begin
 
         -- Event-driven settling: Wait for ~200 CIC output samples for loop settling
         -- DSM @ 400MHz -> CIC /256 -> 1.5625MHz output rate
-        -- 200 samples = 128μs = 12,800 RC time constants (tau=10ns) - more than sufficient
+        -- 200 samples = 128us = 12,800 RC time constants (tau=10ns) - more than sufficient
         info("Waiting for delta-sigma loop settling (200 output samples)...");
         for i in 1 to 200 loop
           wait until rising_edge(clk_sys) and sample_valid = '1';
@@ -755,8 +755,6 @@ begin
   -- ========================================================================
   -- Monitor critical signals during and after closed-loop handoff
   -- Reports when tdc_valid stops appearing after handoff
-  -- V8.6: Add DAC toggle monitor to catch stuck DAC bugs
-  -- V8.7: Add DSM_MODE to disable TDC watchdog (TDC is observational only in ΔΣ mode)
   -- ========================================================================
   -- Sample Monitor (for debug visibility)
   -- ========================================================================
@@ -919,7 +917,7 @@ begin
   -- DSM Duty Cycle Monitor - FAIL FAST for DC tests stuck at 50%
   -- ========================================================================
   -- For DC input tests, DSM should produce duty cycle proportional to voltage:
-  --   400mV → 33% duty, 600mV → 50% duty, 800mV → 67% duty
+  --   400mV -> 33% duty, 600mV -> 50% duty, 800mV -> 67% duty
   -- If stuck at 50% regardless of input, comparator timing is BROKEN!
   --
   -- V11.1 FIX: Monitor the ACTUAL ΔΣ bitstream that feeds the CIC
@@ -930,7 +928,7 @@ begin
   -- DSM Duty Cycle Monitor - RE-ENABLED for debugging
   -- ========================================================================
   -- Monitor DAC duty cycle to verify loop operation
-  -- Expected: DAC duty = Vin / 1200mV  (e.g., 400mV → 33%, 800mV → 67%)
+  -- Expected: DAC duty = Vin / 1200mV  (e.g., 400mV -> 33%, 800mV -> 67%)
   -- CRITICAL: Must count on clk_tdc (400MHz) to avoid aliasing!
   -- ========================================================================
   p_dsm_duty_monitor : process

@@ -12,17 +12,17 @@ entity tdc_adc_top is
     -- Decimation Factor (R)
     -- Increased to 8192 for 50MHz operation: 50MHz / 8192 = 6.1 kHz output rate
     -- Prevents UART overflow (was 384 @ 2MHz = 5.2kHz)
-    GC_DECIMATION    : positive := 8192;
-    GC_DATA_WIDTH    : positive := 16;  -- Output data width
-    GC_TDC_OUTPUT    : positive := 16;  -- TDC output width
-    GC_SIM           : boolean  := false; -- Simulation mode for TDC (enables debug reports)
-    GC_FAST_SIM      : boolean  := false; -- Fast simulation mode (reduces boot timeouts)
-    GC_OPEN_LOOP     : boolean  := false -- Open-loop test mode (bypass feedback)
+    GC_DECIMATION : positive := 8192;
+    GC_DATA_WIDTH : positive := 16;     -- Output data width
+    GC_TDC_OUTPUT : positive := 16;     -- TDC output width
+    GC_SIM        : boolean  := false;  -- Simulation mode for TDC (enables debug reports)
+    GC_FAST_SIM   : boolean  := false;  -- Fast simulation mode (reduces boot timeouts)
+    GC_OPEN_LOOP  : boolean  := false   -- Open-loop test mode (bypass feedback)
   );
   port(
     -- Clocks and reset
-    clk_sys             : in  std_logic; -- System clock (e.g., 100 MHz)
-    clk_tdc             : in  std_logic; -- TDC fast clock (e.g., 400-600 MHz)
+    clk_sys             : in  std_logic; -- System clock (100 MHz)
+    clk_tdc             : in  std_logic; -- TDC fast clock (400 MHz)
     reset               : in  std_logic;
     -- Reference clock for TDC start edge
     ref_clock           : in  std_logic;
@@ -54,18 +54,6 @@ entity tdc_adc_top is
 end entity;
 
 architecture rtl of tdc_adc_top is
-  -- Note: TDC contribution disable is now controlled by disable_tdc_contrib port (runtime)
-
-  -- Runtime filter bypass controls (driven by input ports)
-  -- When disabled, filters are bypassed to isolate delta-sigma path from FIR processing
-
-  -- Runtime selectable TDC-free mode
-  -- When disable_tdc_contrib='1' we also bypass the TDC-generated CE path and
-  -- feed the CIC with the ref_clock edge based CE plus a directly synchronized
-  -- DAC bitstream. This removes the TDC toggle/CDC path from the signal chain,
-  -- ensuring the pure 1-bit ∆Σ path can be characterized independently.
-  signal use_tdc_free_debug_mode : std_logic;
-
   -- TDC Center Calibration
   signal   tdc_center_cal       : signed(GC_TDC_OUTPUT - 1 downto 0) := (others => '0');
   signal   tdc_center_tdc       : signed(GC_TDC_OUTPUT - 1 downto 0) := (others => '0');
@@ -90,8 +78,7 @@ architecture rtl of tdc_adc_top is
   signal tdc_lost_sample : std_logic;
 
   -- Coarse bias configuration
-  -- Default value: 220 (0xDC) - Shifted from 180 to provide positive headroom
-  -- Previous value (180) still saw peaks at +31872 (near +32767 limit)
+  -- Default value: 220 (0xDC)
   constant C_DEFAULT_COARSE_BIAS : unsigned(7 downto 0) := to_unsigned(220, 8);
 
   signal coarse_bias    : unsigned(7 downto 0) := C_DEFAULT_COARSE_BIAS;
@@ -147,20 +134,17 @@ architecture rtl of tdc_adc_top is
   --   Decimation Shift: 9 -> 8
   --   TDC Gain: 1/4 -> 1/1
   -- Result: Coarse step = 192, Fine step = 192.
-  signal ref_sys0          : std_logic := '0';
-  signal ref_sys1          : std_logic := '0';
-  signal ref_sys2          : std_logic := '0';
-  signal ref_sys_prev      : std_logic := '0';
-  signal ce_ref            : std_logic := '0'; -- Rising edge of ref_clock in clk_sys domain
-  signal dac_sync0         : std_logic := '0';
-  signal dac_sync1         : std_logic := '0';
-  signal dac_dbg_hold      : std_logic := '0'; -- DAC bit captured at ce_ref for debug CIC
-  -- Debug CIC outputs
-  signal dbg_cic_data_out  : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
-  signal dbg_cic_valid_out : std_logic;
+  signal ref_sys0        : std_logic := '0';
+  signal ref_sys1        : std_logic := '0';
+  signal ref_sys2        : std_logic := '0';
+  signal ref_sys_prev    : std_logic := '0';
+  signal ce_ref          : std_logic := '0'; -- Rising edge of ref_clock in clk_sys domain
+  signal dac_sync0       : std_logic := '0';
+  signal dac_sync1       : std_logic := '0';
+  signal dac_dbg_hold    : std_logic := '0'; -- DAC bit captured at ce_ref for debug CIC
   -- Final mux outputs (select between TDC path and debug path)
-  signal final_cic_data    : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
-  signal final_cic_valid   : std_logic;
+  signal final_cic_data  : std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
+  signal final_cic_valid : std_logic;
 
   -- Multi-Bit TDC Decimator
   constant C_TDC_ACC_WIDTH  : natural                              := 32;
@@ -197,7 +181,7 @@ architecture rtl of tdc_adc_top is
   constant C_FILTER_PRIME_COUNT : integer := 70; -- Extra margin for safety
 
   -- Boot timeout constants (selectable via GC_FAST_SIM for faster simulation)
-  -- Post-sweep settling: 25µs normal (10000 cycles @ 2.5µs/cycle), 2.5µs fast sim
+  -- Post-sweep settling: 25us normal (10000 cycles @ 2.5us/cycle), 2.5us fast sim
   constant C_SWEEP_SETTLING_NORMAL : integer              := 10000;
   constant C_SWEEP_SETTLING_FAST   : integer              := 1000;
   -- Dither timeout: 10ms normal (4000000 cycles), 1ms fast sim
@@ -279,9 +263,6 @@ architecture rtl of tdc_adc_top is
   signal ref_sync2 : std_logic := '0';
   signal reset_tdc : std_logic;
 
-  -- Millivolt output
-  signal mv_code : unsigned(15 downto 0) := (others => '0');
-
 begin
 
   -- Reset Synchronizer
@@ -297,10 +278,6 @@ begin
 
   -- Open-loop test mode: bypass feedback and use fixed DAC duty
   dac_out_bit <= open_loop_dac_duty when GC_OPEN_LOOP else dac_out_ff;
-
-  -- When TDC contribution is disabled, also bypass the TDC timing chain and
-  -- run the CIC on the ref_clock CE path. This isolates the pure 1-bit path.
-  use_tdc_free_debug_mode <= disable_tdc_contrib;
 
   -- Debug outputs for TDC characterization
   debug_tdc_out   <= tdc_out;
@@ -351,7 +328,7 @@ begin
           -- ================================================================
           -- Output DAC based on duty counter: high for (duty/256) of each period
           -- Each duty level held for 256 clk_tdc cycles (~640ns @ 400MHz)
-          -- Full sweep takes 256 * 256 = 65536 cycles (~164µs)
+          -- Full sweep takes 256 * 256 = 65536 cycles (~164us)
           when ST_SWEEP =>
             closed_loop_en <= '0';
             cal_enable_sys <= '0';      -- Don't collect calibration samples during sweep
@@ -374,7 +351,6 @@ begin
                 -- Comparator output = '1' when Vp > Vn, '0' when Vp < Vn
                 -- We're looking for Vp < Vn (DAC has ramped past input voltage)
                 if comp_prev = '1' and comp_sync1 = '0' then
-                  -- Found crossing! Record the duty cycle
                   sweep_found_cross <= '1';
                   sweep_cross_duty  <= sweep_duty_counter;
 
@@ -414,7 +390,7 @@ begin
             -- When crossing is found, wait a bit then move to dither
             if sweep_found_cross = '1' then
               v_boot_counter := v_boot_counter + 1;
-              -- Settling time: 25µs normal, 2.5µs in fast sim mode
+              -- Settling time: 25us normal, 2.5us in fast sim mode
               if (GC_FAST_SIM and v_boot_counter >= C_SWEEP_SETTLING_FAST) or (not GC_FAST_SIM and v_boot_counter >= C_SWEEP_SETTLING_NORMAL) then
                 if GC_SIM then
                   report "BOOT_FSM: Transitioning ST_SWEEP -> ST_DITHER at " & time'image(now) & " with init_integ=" & integer'image(to_integer(sweep_init_integ));
@@ -433,7 +409,7 @@ begin
             closed_loop_en <= '0';
             cal_enable_sys <= '1';      -- Enable TDC calibration sample collection during dither
 
-            -- FIXED 50% DUTY for TDC center calibration
+            -- Fixed 50% duty for TDC center calibration
             -- The TDC center is a geometric property of the circuit timing, not
             -- the input voltage. Use 50% duty to ensure symmetric crossings
             -- and collect calibration samples efficiently at all input voltages.
@@ -441,7 +417,7 @@ begin
               -- Increment period counter (8-bit PWM period)
               sweep_period_cnt <= sweep_period_cnt + 1;
 
-              -- Simple PWM: 50% duty with ±8 dither
+              -- Simple PWM: 50% duty with +/-8 dither
               -- Target duty = 64 (50% of 128)
               if sweep_period_cnt(7) = '0' then
                 -- Upper half of dither cycle: use (64 + 8) = 72
@@ -528,9 +504,6 @@ begin
               end if;
             end if;
 
-          -- Note: ST_CLOSED_LOOP is intentionally a terminal state
-          -- The delta-sigma loop runs here indefinitely until power cycle
-
           when others =>
             -- Safety fallback: return to initial state
             boot_state <= ST_SWEEP;
@@ -551,7 +524,7 @@ begin
 
   -- Trigger TDC on FALLING edge of ref_clock to align with DAC update (which is also on falling edge)
   -- This ensures the comparator transition (which happens after DAC update) falls within the TDC's
-  -- early measurement window, rather than being 250ns late.
+  -- early measurement window
   ref_phases(0) <= not ref_sync2;
 
   -- Sample Generation for Decimator
@@ -567,15 +540,6 @@ begin
 
       -- Generate sample on EVERY ref_clock edge
       if v_start_pulse = '1' and closed_loop_en_tdc = '1' then
-        -- Capture the CURRENT DAC value - this is the DAC state for the sample
-        -- being generated. The previous approach of using v_dac_prev was causing
-        -- ~2% duty cycle undercount at high voltages, leading to 55mV error.
-
-        -- CRITICAL FIX: Check tdc_valid FIRST (same-cycle priority)
-        -- This fixes the race condition where tdc_valid and start_pulse coincide:
-        -- - tdc_sample_ready is updated at END of delta cycle
-        -- - So when we read it, it still shows the OLD value ('0')
-        -- - By checking tdc_valid directly, we catch the fresh TDC value
         if tdc_valid = '1' then
           -- Fresh TDC crossing THIS cycle - use it directly
           tdc_out_hold <= tdc_out;
@@ -615,8 +579,6 @@ begin
   begin
     if rising_edge(clk_sys) then
       if reset = '1' then
-        -- POWER-ON SAFETY: Clear edge detector state during reset
-        -- Prevents corrupting CIC decimation counter with glitch on tdc_valid_sys
         new_sample_sys    <= '0';
         v_toggle_prev     := '0';
         tdc_toggle_sync0  <= '0';
@@ -630,8 +592,7 @@ begin
         tdc_toggle_sync1 <= tdc_toggle_sync0;
         tdc_toggle_sync2 <= tdc_toggle_sync1;
 
-        -- VARIABLE-BASED edge detect: compute pulse immediately and use in same cycle
-        -- Safer than signal-based: avoids one-cycle delay that can hide pulse-width bugs
+        -- Edge detect: compute pulse immediately and use in same cycle
         -- The variable v_pulse is used both to drive new_sample_sys signal AND gate data capture
         v_pulse        := tdc_toggle_sync2 xor v_toggle_prev;
         new_sample_sys <= v_pulse;      -- Signal update for downstream logic
@@ -666,8 +627,7 @@ begin
       GC_TDL_LANES    => 4,
       GC_TDL_LENGTH   => 128,
       GC_COARSE_BITS  => 8,
-      GC_OUTPUT_WIDTH => GC_TDC_OUTPUT,
-      GC_SIM          => GC_SIM
+      GC_OUTPUT_WIDTH => GC_TDC_OUTPUT
     )
 
     port map(
@@ -709,13 +669,16 @@ begin
     variable v_center      : signed(GC_TDC_OUTPUT - 1 downto 0);
     impure function is_valid_sample(s : signed) return boolean is
     begin
-      -- pragma translate_off
+      if not GC_SIM then
+        return true;                    -- In synthesis, all signals are valid
+      end if;
+      -- synthesis translate_off
       for i in s'range loop
         if s(i) /= '0' and s(i) /= '1' then
           return false;
         end if;
       end loop;
-      -- pragma translate_on
+      -- synthesis translate_on
       return true;
     end function;
   begin
@@ -750,17 +713,12 @@ begin
             -- After enough samples, compute center as midpoint of min/max
             if cal_sample_cnt = to_unsigned(C_CAL_SAMPLES - 1, cal_sample_cnt'length) then
               -- Center = (min + max) / 2
-              -- IMPORTANT: Extend width by 1 bit before adding to prevent overflow!
               -- Both values are ~25000, so their sum (~50000) exceeds 16-bit signed max (32767)
               v_center       := resize(shift_right(resize(v_tdc_min, GC_TDC_OUTPUT + 1) + resize(v_tdc_max, GC_TDC_OUTPUT + 1), 1), GC_TDC_OUTPUT);
               -- Store the actual center value (not scaled) for proper subtraction
               -- The multi-bit decimator will subtract this before scaling
               tdc_center_tdc <= v_center;
               cal_done       <= '1';
-
-              if GC_SIM then
-                report "TDC_CAL: COMPLETE! min=" & integer'image(to_integer(v_tdc_min)) & " max=" & integer'image(to_integer(v_tdc_max)) & " center=" & integer'image(to_integer(v_center)) & " from " & integer'image(C_CAL_SAMPLES) & " samples at " & time'image(now);
-              end if;
             end if;
           end if;
         end if;
@@ -813,9 +771,9 @@ begin
       else
         -- DIRECT FEEDBACK: DAC = comparator (like rc_adc_top)
         -- Update at falling edge of start pulse (~200MHz) for phase coherence with TDC
-        -- Previous mod_cnt prescaler (50MHz) destroyed coherence, causing ±90mV noise
+        -- Previous mod_cnt prescaler (50MHz) destroyed coherence, causing +/-90mV noise
         if v_start_falling = '1' and closed_loop_en_tdc = '1' then
-          -- Direct comparator-to-DAC: comp='1' → DAC='1', comp='0' → DAC='0'
+          -- Direct comparator-to-DAC: comp='1' -> DAC='1', comp='0' -> DAC='0'
           -- The external RC filter provides integration
           dac_integrator_ff <= comp_sync1;
         end if;
@@ -825,20 +783,13 @@ begin
 
   -- TDC center CDC (clk_tdc -> clk_sys)
   p_tdc_center_cdc : process(clk_sys)
-    variable v_prev_center : signed(GC_TDC_OUTPUT - 1 downto 0) := (others => '0');
   begin
     if rising_edge(clk_sys) then
       if reset = '1' then
         tdc_center_cal <= (others => '0');
-        v_prev_center  := (others => '0');
       else
         -- Simple CDC - tdc_center_tdc is quasi-static (set once during cal)
         tdc_center_cal <= tdc_center_tdc;
-        -- Debug: report when center changes
-        if GC_SIM and tdc_center_tdc /= v_prev_center then
-          report "CDC_CENTER: tdc_center_tdc changed from " & integer'image(to_integer(v_prev_center)) & " to " & integer'image(to_integer(tdc_center_tdc)) & " at " & time'image(now);
-          v_prev_center := tdc_center_tdc;
-        end if;
       end if;
     end if;
   end process;
@@ -889,10 +840,6 @@ begin
       closed_loop_en_sync1 <= closed_loop_en_sync0;
       closed_loop_en_sync2 <= closed_loop_en_sync1;
 
-      -- Debug report when synchronized signal transitions (always enabled)
-      if (closed_loop_en_sync2 = '1') and (closed_loop_en_tdc = '0') then
-        report "CDC_ENABLE: closed_loop_en_tdc going HIGH at " & time'image(now);
-      end if;
       closed_loop_en_tdc <= closed_loop_en_sync2;
 
       -- CDC for cal_enable (gates TDC calibration to DITHER phase only)
@@ -903,14 +850,10 @@ begin
   end process;
 
   -- TDL Centering Calibration FSM (clk_tdc domain)
-  -- TIMING FIX: 2-stage pipeline to break critical path:
-  --   Stage 1: Register fine_at_comp_out, compute sum (fine_at_comp + acc)
-  --   Stage 2: Use registered sum for comparisons and decisions
   p_tdl_centering_cal : process(clk_tdc)
-    constant C_TDL_CAL_TIMEOUT : natural               := 100000;
-    -- Pre-computed thresholds (8 samples × threshold value)
-    constant C_THRESH_LOW      : unsigned(19 downto 0) := to_unsigned(24576 * 8, 20); -- 196608
-    constant C_THRESH_HIGH     : unsigned(19 downto 0) := to_unsigned(40960 * 8, 20); -- 327680
+    -- Pre-computed thresholds (8 samples x threshold value)
+    constant C_THRESH_LOW  : unsigned(19 downto 0) := to_unsigned(24576 * 8, 20); -- 196608
+    constant C_THRESH_HIGH : unsigned(19 downto 0) := to_unsigned(40960 * 8, 20); -- 327680
   begin
     if rising_edge(clk_tdc) then
       if reset_tdc = '1' then
@@ -943,13 +886,6 @@ begin
         tdl_cal_sum_valid   <= '0';
         tdl_cal_last_sample <= '0';
 
-        -- Timeout check
-        if tdl_cal_timeout_cnt >= C_TDL_CAL_TIMEOUT then
-          -- Timeout: accept current coarse_bias_cal as best effort
-          tdl_cal_done <= '1';
-          report "TDL_CAL: Timeout after " & integer'image(to_integer(tdl_cal_timeout_cnt)) & " cycles, coarse_bias_cal=" & integer'image(to_integer(coarse_bias_cal)) severity note;
-        end if;
-
         -- Settle counter: registered countdown and flag update
         if tdl_settling = '1' then
           if tdl_settle_cnt > 0 then
@@ -979,18 +915,16 @@ begin
         -- PIPELINE STAGE 2: Use registered sum for comparisons (1 cycle later)
         -- =====================================================================
         if tdl_cal_sum_valid = '1' and tdl_cal_last_sample = '1' then
-          -- Check if centered (within tolerance: 24576 to 40960 = 32768 ± 8192)
+          -- Check if centered (within tolerance: 24576 to 40960 = 32768 +/- 8192)
           -- Using pre-computed thresholds scaled by 8
           if tdl_cal_sum_reg >= C_THRESH_LOW and tdl_cal_sum_reg <= C_THRESH_HIGH then
             -- Centered! Calibration complete
             tdl_cal_done <= '1';
-            report "TDL_CAL: SUCCESS! coarse_bias_cal=" & integer'image(to_integer(coarse_bias_cal)) & " fine_avg=" & integer'image(to_integer(resize(shift_right(tdl_cal_sum_reg, 3), 16))) severity note;
 
           elsif tdl_cal_sum_reg < C_THRESH_LOW then
             -- Average too low (< 24576): fine timing near 0, need to shift reference
             if coarse_bias_cal < 254 then
               coarse_bias_cal <= coarse_bias_cal + 1;
-              report "TDL_CAL: fine_avg LOW, increasing coarse_bias_cal to " & integer'image(to_integer(coarse_bias_cal) + 1) severity note;
             end if;
             -- Reset accumulator and start settle wait
             tdl_cal_fine_acc   <= (others => '0');
@@ -1002,7 +936,6 @@ begin
             -- Average too high (> 40960): fine timing near max, need to shift reference
             if coarse_bias_cal > 1 then
               coarse_bias_cal <= coarse_bias_cal - 1;
-              report "TDL_CAL: fine_avg HIGH, decreasing coarse_bias_cal to " & integer'image(to_integer(coarse_bias_cal) - 1) severity note;
             end if;
             -- Reset accumulator and start settle wait
             tdl_cal_fine_acc   <= (others => '0');
@@ -1013,13 +946,10 @@ begin
         end if;
 
       elsif cal_enable_tdc = '0' then
-        -- Calibration phase ended (moved to closed loop)
         null;                           -- Keep using calibrated value
       end if;
     end if;
   end process;
-
-  -- Note: p_closed_loop_drive_sync process removed (result was never used)
 
   -- Sticky Handoff Latch
   p_sticky_handoff : process(clk_tdc)
@@ -1029,9 +959,6 @@ begin
         use_closed_loop <= '0';
       elsif closed_loop_drive = '1' then
         use_closed_loop <= '1';         -- STICKY: once true, stays true
-        if GC_SIM and use_closed_loop = '0' then
-          report "STICKY_HANDOFF: use_closed_loop latched to '1' at " & time'image(now) severity note;
-        end if;
       end if;
     end if;
   end process;
@@ -1130,7 +1057,6 @@ begin
           -- Increment sample counter for debug rate-limiting
           v_sample_cnt := v_sample_cnt + 1;
 
-          -- DEBUG: Print first few samples and then every 10000th sample
           if GC_SIM and (v_sample_cnt <= 3 or (v_sample_cnt mod 10000) = 0) then
             report "MULTIBIT_CALC[" & integer'image(v_sample_cnt) & "]: dac=" & std_logic'image(dac_bitstream_hold) & " tdc_out=" & integer'image(to_integer(tdc_out_sys)) & " tdc_center=" & integer'image(to_integer(tdc_center_cal)) & " tdc_diff=" & integer'image(to_integer(tdc_out_sys - resize(tdc_center_cal, GC_TDC_OUTPUT))) & " tdc_contrib=" & integer'image(to_integer(v_tdc_contrib)) & " q=" & integer'image(to_integer(v_multibit_q));
           end if;
@@ -1139,9 +1065,6 @@ begin
           if tdc_dec_counter = to_unsigned(GC_DECIMATION - 1, tdc_dec_counter'length) then
             -- On final sample: compute total sum including current sample
             v_acc_sum := tdc_accumulator + resize(v_multibit_q, C_TDC_ACC_WIDTH);
-
-            -- Debug: show accumulator BEFORE adding current sample
-            -- DEC_OUTPUT debug disabled for speed (printed every decimation period)
 
             -- Divide by 256 (shift 8) for perfect matching with 384 decimation
             v_avg := shift_right(v_acc_sum, 8);
@@ -1227,8 +1150,6 @@ begin
         ref_sys2 <= ref_sys1;
 
         -- Edge detect: 1 clk_sys pulse per ref_clock RISING edge (~2MHz rate)
-        -- FIX: Sample in middle of DAC period (Rising Edge) to mimic valid TDC path timing
-        -- Previous Falling Edge capture coincided with DAC transition (dac_out_ff update), causing TB failure
         ce_ref       <= ref_sys2 and not ref_sys_prev;
         ref_sys_prev <= ref_sys2;
       end if;
@@ -1256,24 +1177,7 @@ begin
     end if;
   end process;
 
-  -- Debug CIC: Uses ref_clock edge CE and directly synchronized DAC bit
-  -- No dependence on TDC toggle, new_sample_sys, or dac_bitstream_hold
-  -- CE at ~2MHz, CIC decimates by GC_DECIMATION internally → ~5.2kS/s output
-  i_cic_debug : entity work.cic_sinc3_decimator
-    generic map(
-      GC_DECIMATION   => GC_DECIMATION, -- 384: CIC does internal decimation
-      GC_OUTPUT_WIDTH => GC_DATA_WIDTH
-    )
-    port map(
-      clk      => clk_sys,
-      reset    => reset,
-      data_in  => dac_dbg_hold,         -- DAC bit captured at ce_ref
-      ce       => ce_ref,               -- ref_clock edge, NOT TDC or counter
-      data_out => dbg_cic_data_out,
-      valid    => dbg_cic_valid_out
-    );
-
-  -- CIC SINC3 Decimator (original TDC-based path)
+  -- CIC SINC3 Decimator
   i_cic : entity work.cic_sinc3_decimator
     generic map(
       GC_DECIMATION   => GC_DECIMATION,
@@ -1282,18 +1186,15 @@ begin
     port map(
       clk      => clk_sys,
       reset    => reset,
-      -- FIX: Always use the known-good 'dac_dbg_hold' stream (synced to ce_ref)
-      -- The previous 'dac_bitstream_hold' from TDC CDC was causing -0.09V error (aliasing/corruption)
       data_in  => dac_dbg_hold,
-      -- FIX: Always use ce_ref logic (clean Reference Edge) for decimation pacing
       ce       => ce_ref,
       data_out => cic_data_out,
       valid    => cic_valid_out
     );
 
-  -- Select between TDC path and debug path (runtime selectable)
-  final_cic_data  <= dbg_cic_data_out when use_tdc_free_debug_mode = '1' else cic_data_out;
-  final_cic_valid <= dbg_cic_valid_out when use_tdc_free_debug_mode = '1' else cic_valid_out;
+  -- Direct connection (debug mode removed, both paths were identical)
+  final_cic_data  <= cic_data_out;
+  final_cic_valid <= cic_valid_out;
 
   -- FIR Equalizer (compensates CIC sinc3 droop)
   -- Uses final_cic_* which comes from debug or normal path based on C_TDC_FREE_DEBUG_MODE
@@ -1370,14 +1271,9 @@ begin
 
         -- Accumulate TDC contribution on each valid sample (after calibration)
         if new_sample_sys = '1' and cal_done_sys = '1' then
-          -- FIX: Use STATIC Calibrated Center instead of Runtime Tracking.
-          -- Runtime tracking (v_center_dyn) acts as a High-Pass filter, removing 
-          -- valid DC corrections from the TDC, causing 'droop' at mid-scale.
-          -- Using calibrated center enables true DC linearity correction.
           v_center_dyn := tdc_center_cal;
 
           -- TDC contribution: (TDC - cal_center) / 32 (shift 5)
-          -- Reduced gain to prevent mid-scale over-correction that was pulling ~0.3-0.5V low.
           if disable_tdc_contrib = '1' then
             v_tdc_contrib := (others => '0');
           else
@@ -1428,9 +1324,6 @@ begin
         if lp_mux_valid = '1' and filter_primed = '0' then
           if filter_prime_counter >= to_unsigned(C_FILTER_PRIME_COUNT - 1, 8) then
             filter_primed <= '1';
-            if GC_SIM then
-              report "FILTER_PRIMED: CIC/EQ/LP chain now stable after " & integer'image(C_FILTER_PRIME_COUNT) & " samples at " & time'image(now);
-            end if;
           else
             filter_prime_counter <= filter_prime_counter + 1;
           end if;
@@ -1455,7 +1348,6 @@ begin
       if reset = '1' then
         combined_data_out  <= (others => '0');
         combined_valid_out <= '0';
-        mv_code            <= (others => '0');
         v_combined_cnt     := 0;
         v_mon_prescaler    := (others => '0');
       else
@@ -1468,43 +1360,21 @@ begin
             v_tdc_only         := tdc_dec_data_out;
             combined_data_out  <= v_tdc_only;
             combined_valid_out <= '1';
-
-            -- Only report first few and last few priming samples to avoid flooding
-            if GC_SIM and (filter_prime_counter <= 2 or filter_prime_counter >= C_FILTER_PRIME_COUNT - 2) then
-              report "BYPASS_OUT: tdc_dec=" & integer'image(to_integer(v_tdc_only)) & " mv=" & integer'image(to_integer(mv_code)) & " (filter priming, " & integer'image(to_integer(filter_prime_counter)) & "/" & integer'image(C_FILTER_PRIME_COUNT) & ")";
-            end if;
           end if;
         else
           -- COMBINED MODE: After LP filter is primed, use CIC/EQ/LP + TDC
           -- When C_BYPASS_EQ_FILTER or C_BYPASS_LP_FILTER are true, lp_mux_* carries CIC output directly
           if lp_mux_valid = '1' then
             -- LP mux output is the CIC/EQ/LP processed 1-bit DAC stream (or bypassed CIC output)
-            -- CIC with bipolar input (±1) and unity gain gives output in Q15 format
+            -- CIC with bipolar input (+/-1) and unity gain gives output in Q15 format
             -- Range: [-32768, +32767] maps to [-1.0, +1.0)
             v_lp_signed := signed(lp_mux_out);
 
             -- Add held TDC contribution for fine resolution
             -- The tdc_contrib_held was captured when tdc_contrib_valid fired
-            -- DEBUG: When C_DISABLE_TDC_CONTRIB=true, skip TDC to isolate CIC path
             if disable_tdc_contrib = '1' then
               v_combined := resize(v_lp_signed, GC_DATA_WIDTH + 2);
             else
-              -- SIGN FIX: Subtract TDC contribution!
-              -- Higher Input -> Faster Integration -> Shorter Time -> Smaller TDC Code.
-              -- Start pulse is fixed. Comparator trips earlier.
-              -- TDC = Stop - Start. Smaller TDC means "Turned ON earlier".
-              -- If it turns on earlier, it means input was HIGH.
-              -- So Smaller TDC = Higher Input.
-              -- Correlation is Inverted.
-              -- We want Higher Input -> Higher Output.
-              -- So we must Negate TDC?
-              -- Wait. If TDC is small (Higher Input), we want to ADD positive value?
-              -- Result = Base (Rough) + Correction.
-              -- If Base is "Average".
-              -- Let's stick to the Sawtooth evidence:
-              -- 0.4V -> 0.6V (Too High) -> TDC was adding positive value.
-              -- 0.5V -> 0.4V (Too Low) -> TDC was adding negative value (or small positive).
-              -- Flipping the sign is the correct move for sawtooth inversion.
               v_combined := resize(v_lp_signed, GC_DATA_WIDTH + 2) - resize(tdc_contrib_held, GC_DATA_WIDTH + 2);
             end if;
 
@@ -1528,9 +1398,6 @@ begin
 
             -- Rate-limit COMBINED_OUT debug (first 3 + every 20th)
             v_combined_cnt := v_combined_cnt + 1;
-            if GC_SIM and (v_combined_cnt <= 3 or (v_combined_cnt mod 20) = 0) then
-              report "COMBINED_OUT[" & integer'image(v_combined_cnt) & "]: lp=" & integer'image(to_integer(v_lp_signed)) & " tdc_contrib=" & integer'image(to_integer(tdc_contrib_held)) & " combined=" & integer'image(to_integer(v_combined)) & " mv=" & integer'image(to_integer(mv_code));
-            end if;
           end if;
         end if;
       end if;
@@ -1553,7 +1420,7 @@ begin
   tdc_monitor_valid  <= tdc_mon_valid;
 
   -- ========================================================================
-  -- Closed-Loop Drive Arming (v8.4 hardware stall fix - Valid-Qualified)
+  -- Closed-Loop Drive Arming
   -- ========================================================================
   p_arm_closed_loop : process(clk_tdc)
     variable v_ref_sync2_prev : std_logic := '0';
@@ -1573,20 +1440,14 @@ begin
         -- ======================================================================
         -- Step 1: Latch once we observe a closed-loop tdc_valid
         -- ======================================================================
-        -- TIMEOUT FALLBACK: If no TDC valid after 100 start pulses (~50µs),
+        -- TIMEOUT FALLBACK: If no TDC valid after 100 start pulses (~50us),
         -- assume comparator-based mode and proceed with handoff anyway.
         -- This enables operation when TDC doesn't fire (static comparator).
         if (closed_loop_en = '1') and (tdc_valid = '1') and (cl_valid_seen = '0') then
           cl_valid_seen <= '1';
-          if GC_SIM then
-            report "HANDOFF: cl_valid_seen='1' at time " & time'image(now) & " (first closed-loop tdc_valid)";
-          end if;
         elsif (closed_loop_en = '1') and (cl_valid_seen = '0') and (cl_watch_cnt >= 100) then
           -- Timeout: no TDC valid, force handoff (comparator mode)
           cl_valid_seen <= '1';
-          if GC_SIM then
-            report "HANDOFF: cl_valid_seen='1' by TIMEOUT (no TDC valid after 100 starts) at " & time'image(now);
-          end if;
         end if;
 
         -- ======================================================================
@@ -1595,9 +1456,6 @@ begin
         -- ======================================================================
         if (closed_loop_en = '1') and (cl_valid_seen = '1') and (closed_loop_drive = '0') and (cl_switch_pend = '0') then
           cl_switch_pend <= '1';
-          if GC_SIM then
-            report "HANDOFF: cl_switch_pend='1' (armed) at time " & time'image(now);
-          end if;
         end if;
 
         -- ======================================================================
@@ -1607,16 +1465,13 @@ begin
           closed_loop_drive <= '1';
           cl_switch_pend    <= '0';
           cl_watch_cnt      <= (others => '0'); -- Reset watchdog on handoff
-          if GC_SIM then
-            report "HANDOFF: cl_switch executed at " & time'image(now);
-          end if;
         end if;
 
         -- ======================================================================
         -- Watchdog: Count Start edges while waiting for TDC samples
         -- ======================================================================
         -- During handoff wait (closed_loop_en=1 but closed_loop_drive=0):
-        --   Count starts. If we hit 200 starts (~100µs @ 2MHz), flag sticky error.
+        --   Count starts. If we hit 200 starts (~100us @ 2MHz), flag sticky error.
         -- During closed-loop operation (closed_loop_drive=1):
         --   Count starts when no TDC samples arrive. Reset on each tdc_valid.
         --   Used for keepalive and auto-rescue.
@@ -1666,9 +1521,7 @@ begin
         dac_out_ff        <= '0';
         v_last_use_cl_tdc := '0';
       else
-        -- Debug: Report when use_closed_loop_tdc transitions
         if use_closed_loop_tdc /= v_last_use_cl_tdc then
-          report "DAC_MUX: use_closed_loop_tdc changed " & std_logic'image(v_last_use_cl_tdc) & " -> " & std_logic'image(use_closed_loop_tdc) & " at " & time'image(now);
           v_last_use_cl_tdc := use_closed_loop_tdc;
         end if;
 

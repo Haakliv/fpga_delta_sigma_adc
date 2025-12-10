@@ -1,6 +1,6 @@
 -- ************************************************************************
 -- Anti-Aliasing FIR Low-Pass Filter
--- Final filtering stage after CIC decimation and sinc³ equalization
+-- Final filtering stage after CIC decimation and sinc^3 equalization
 -- 63-tap symmetric linear-phase FIR (Type I)
 -- Coefficients: Kaiser window (β=6.98), Fc=700Hz, Fs=1745Hz
 -- Q1.15 format (16-bit signed), DC gain = 1.0
@@ -42,8 +42,8 @@ architecture rtl of fir_lowpass is
   -- Coefficient width (Q1.15 fixed-point format)
   constant C_COEF_WIDTH : positive := 16;
 
-  -- Accumulator needs headroom: (16+1)-bit sum × 16-bit coeff = 33 bits
-  -- Sum of 63 products needs log2(63) ≈ 6 more bits → 33+6 = 39 bits total
+  -- Accumulator needs headroom: (16+1)-bit sum x 16-bit coeff = 33 bits
+  -- Sum of 63 products needs log2(63) = 6 more bits -> 33+6 = 39 bits total
   constant C_ACC_WIDTH : natural := GC_INPUT_WIDTH + C_COEF_WIDTH + 1 + 6;
 
   -- Delay line for 63 taps
@@ -173,7 +173,7 @@ begin
   -- ========================================================================
   -- Pipeline Stage 3a: First level of accumulation tree (registered for timing)
   -- ========================================================================
-  -- Level 1: 32 products → 16 sums
+  -- Level 1: 32 products -> 16 sums
   p_stage3a_accumulate : process(clk)
   begin
     if rising_edge(clk) then
@@ -181,7 +181,7 @@ begin
         acc_level1_reg <= (others => (others => '0'));
         valid_stage3a  <= '0';
       elsif valid_stage2 = '1' then
-        -- Level 1: 16 pairs (32→16)
+        -- Level 1: 16 pairs (32->16)
         for i in 0 to 15 loop
           acc_level1_reg(i) <= resize(prod_reg(2 * i), C_ACC_WIDTH) + resize(prod_reg(2 * i + 1), C_ACC_WIDTH);
         end loop;
@@ -203,7 +203,7 @@ begin
         acc_level2_reg <= (others => (others => '0'));
         valid_stage3b  <= '0';
       elsif valid_stage3a = '1' then
-        -- Level 2: 8 pairs (16→8)
+        -- Level 2: 8 pairs (16->8)
         for i in 0 to 7 loop
           acc_level2_reg(i) <= acc_level1_reg(2 * i) + acc_level1_reg(2 * i + 1);
         end loop;
@@ -218,9 +218,9 @@ begin
   -- ========================================================================
   -- Pipeline Stage 4: Final accumulation (remaining 3 levels)
   -- ========================================================================
-  -- Level 3: 8 sums → 4 sums
-  -- Level 4: 4 sums → 2 sums
-  -- Level 5: 2 sums → 1 final sum
+  -- Level 3: 8 sums -> 4 sums
+  -- Level 4: 4 sums -> 2 sums
+  -- Level 5: 2 sums -> 1 final sum
   p_stage4_accumulate : process(clk)
     type     T_LEVEL3 is array (0 to 3) of signed(C_ACC_WIDTH - 1 downto 0);
     variable v_level3 : T_LEVEL3;
@@ -232,17 +232,17 @@ begin
         acc_reg      <= (others => '0');
         valid_stage4 <= '0';
       elsif valid_stage3b = '1' then
-        -- Level 3: 4 pairs (8→4)
+        -- Level 3: 4 pairs (8->4)
         for i in 0 to 3 loop
           v_level3(i) := acc_level2_reg(2 * i) + acc_level2_reg(2 * i + 1);
         end loop;
 
-        -- Level 4: 2 pairs (4→2)
+        -- Level 4: 2 pairs (4->2)
         for i in 0 to 1 loop
           v_level4(i) := v_level3(2 * i) + v_level3(2 * i + 1);
         end loop;
 
-        -- Level 5: Final sum (2→1)
+        -- Level 5: Final sum (2->1)
         acc_reg      <= v_level4(0) + v_level4(1);
         valid_stage4 <= '1';
       else

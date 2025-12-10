@@ -42,7 +42,7 @@ architecture behavioral of tdc_quantizer_tb is
 
   -- Test stimulus
   signal test_voltage : real := 0.0;    -- Simulated input voltage (0.0 to 1.0)
-  signal lost_sample  : std_logic;      -- V3.3: Sticky overflow flag
+  signal lost_sample  : std_logic;      -- Sticky overflow flag
 
 begin
 
@@ -78,11 +78,11 @@ begin
       ref_phases(0)          => ref_phases_sync(2), -- Use synchronized reference
       time_dac_ctrl          => time_dac_ctrl,
       coarse_bias            => to_unsigned(9, 4), -- NOTE: Standalone test sees varying dcoarse (1 or 9) - needs timing review
-      invert_polarity        => '0',    -- V3.3: Normal polarity (no inversion)
+      invert_polarity        => '0',    -- Normal polarity (no inversion)
       tdc_out                => tdc_out,
       tdc_valid              => tdc_valid,
       overflow               => overflow,
-      lost_sample            => lost_sample, -- V3.3: Sticky overflow tracking
+      lost_sample            => lost_sample, -- Sticky overflow tracking
       debug_dcoarse_raw      => open,
       debug_dcoarse_adjusted => open,
       debug_s_win_ok1        => open,
@@ -153,14 +153,14 @@ begin
   end process;
 
   -- Reference phase generator (single-phase for simplified TDC)
-  -- Generate reference pulse every 100 system clock periods (1µs)
+  -- Generate reference pulse every 100 system clock periods (1us)
   p_ref_phases : process
     constant C_PULSE_WIDTH : time := C_CLK_TDC_PERIOD * 4; -- 10ns pulse (4 TDC clocks) ensures reliable edge detection through 3-FF sync
   begin
     wait until reset = '0';
     loop
       -- Generate reference pulse
-      wait for C_CLK_SYS_PERIOD * 100;  -- Reference period = 1µs
+      wait for C_CLK_SYS_PERIOD * 100;  -- Reference period = 1us
       ref_phases(0) <= '1';
       wait for C_PULSE_WIDTH;           -- Wide pulse ensures edge detection
       ref_phases(0) <= '0';
