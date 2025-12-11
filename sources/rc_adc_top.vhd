@@ -96,15 +96,17 @@ begin
   i_cic : entity work.cic_sinc3_decimator
     generic map(
       GC_DECIMATION   => GC_DECIMATION,
+      GC_INPUT_WIDTH  => 1,
       GC_OUTPUT_WIDTH => GC_DATA_WIDTH
     )
     port map(
-      clk      => clk,
-      reset    => reset,
-      data_in  => decimator_sync(1),    -- 2-FF synchronized input
-      ce       => trigger_enable,       -- Gated by trigger
-      data_out => cic_data_out,
-      valid    => cic_valid_out
+      clk           => clk,
+      reset         => reset,
+      data_in       => decimator_sync(1),    -- 2-FF synchronized input
+      data_in_wide  => (others => '0'),      -- Not used for 1-bit input
+      ce            => trigger_enable,       -- Gated by trigger
+      data_out      => cic_data_out,
+      valid         => cic_valid_out
     );
 
   i_eq : entity work.fir_equalizer

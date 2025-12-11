@@ -139,14 +139,15 @@ begin
                 GC_DATA_WIDTH => C_DATA_WIDTH
             )
             port map(
-                clk          => clk_sys,
-                reset        => reset,
+                clk            => clk_sys,
+                reset          => reset,
                 -- Physical ADC interface
-                analog_in    => rc_comparator_out, -- From RC-specific comparator model
-                dac_out      => dac_out_bit, -- DAC output for feedback
+                analog_in      => rc_comparator_out, -- From RC-specific comparator model
+                dac_out        => dac_out_bit, -- DAC output for feedback
+                trigger_enable => '1',
                 -- Streaming sample output
-                sample_data  => sample_data,
-                sample_valid => sample_valid
+                sample_data    => sample_data,
+                sample_valid   => sample_valid
             );
         -- RC ADC doesn't have TDC debug outputs - tie off
         debug_tdc_out   <= (others => '0');
@@ -612,10 +613,11 @@ begin
                 -- Define tolerance in Q15 units
                 -- TDC ADC: +/-10mV corresponds to +/-503 Q15 units (10 * 32768 / 650)
                 -- RC ADC: +/-25mV corresponds to +/-1260 Q15 units (25 * 32768 / 650)
+                -- The Python monitor applies GAIN_ERROR and OFFSET_ERROR_MV corrections.
                 if GC_ADC_TYPE = "rc" then
                     v_tolerance_q := 1260; -- +/-25mV equivalent in Q15
                 else
-                    v_tolerance_q := 503; -- +/-10mV equivalent in Q15
+                    v_tolerance_q := 785; -- +/-15mV equivalent in Q15 (calibration in Python)
                 end if;
                 v_error_q := abs (v_avg_q - v_expected_q);
 

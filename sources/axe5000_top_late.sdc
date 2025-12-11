@@ -1,16 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (C) 2025 Arrow
 # SPDX-License-Identifier: MIT-0
 
-# ---------- CDC false paths to FIRST sync stage (non-intrusive; prevents bogus timing) ----------
-# 2 MHz ref -> 100 MHz: first flop of 3-FF synchronizer (ref_sys0 in axe5000_top)
-# This is an asynchronous clock domain crossing - the first register will be metastable
-# Mark as false path to prevent timing analysis on the CDC path
-# The -from specifies the SOURCE clock (2 MHz), -to specifies the destination register
-set_false_path -from [get_clocks {i_niosv|iopll|iopll_outclk2}] -to [get_registers {*|ref_sys*}]
-
 # 2 MHz ref -> 400 MHz: first flop of 3-FF synchronizer (ref_sync0 in TDC path)  
 # Same CDC logic but crossing to the TDC 400 MHz clock domain
 set_false_path -from [get_clocks {i_niosv|iopll|iopll_outclk2}] -to [get_registers {*|ref_sync*}]
+
+# CIC decimated output toggle CDC: 400 MHz (clk_tdc) -> 100 MHz (clk_sys)
+# The cic_toggle_tdc signal is a toggle that crosses from clk_tdc to clk_sys domain.
+# This is synchronized through a 3-FF synchronizer chain (cic_toggle_sync0/1/2).
+# The first synchronizer flop is asynchronous, so timing between domains is not meaningful.
+set_false_path -from [get_registers {*|cic_toggle_tdc}] -to [get_registers {*|cic_toggle_sync0}]
 
 # ---------- TDC Calibration Histogram RAM Timing ----------
 # The calibration histogram is a 256-entry x 16-bit RAM updated during TDC calibration.
@@ -32,15 +31,6 @@ set_multicycle_path -hold 1 -from [get_registers {*calib_search_idx*}] -to [get_
 # Allow 2 cycles for RAM read at 400 MHz (2.5ns period).
 set_multicycle_path -setup 2 -from [get_registers {*calib_histogram[*][*]}] -to [get_registers {*calib_hist_read_d1[*]}]
 set_multicycle_path -hold 1 -from [get_registers {*calib_histogram[*][*]}] -to [get_registers {*calib_hist_read_d1[*]}]
-
-# ---------- CIC Decimator Division Timing ----------
-# The CIC gain removal uses a 63-bit division (scale_pipe2 / R^3 -> scale_pipe3).
-# This is a multi-cycle operation that produces one sample every 25600 reference clocks.
-# At 50 MHz ref clock, this is one output every 512 microseconds (1953 Hz sample rate).
-# Path delay is ~51ns, requiring 6 cycles @ 100MHz (10ns period). 
-# Allow 6 cycles for the division to complete (only affects output latency, not throughput).
-set_multicycle_path -setup 6 -from [get_registers {*i_cic*|scale_pipe2[*]}] -to [get_registers {*i_cic*|scale_pipe3[*]}]
-set_multicycle_path -hold 5 -from [get_registers {*i_cic*|scale_pipe2[*]}] -to [get_registers {*i_cic*|scale_pipe3[*]}]
 
 # ---------- TDC Calibration Done Signal Timing ----------
 # The calib_done signal from TDC auto-calibration affects the fine code adjustment pipeline.
@@ -98,9 +88,6 @@ set_multicycle_path -hold 1 -from [get_registers {*i_reset_sync|sync*}] -to [get
 set_multicycle_path -setup 2 -from [get_registers {*calib_hist_update_d3*}] -to [get_registers {*calib_histogram[*][*]}]
 set_multicycle_path -hold 1 -from [get_registers {*calib_hist_update_d3*}] -to [get_registers {*calib_histogram[*][*]}]
 
-# ---------- PRIORITY 1 TIMING FIXES ----------
-# Added to fix timing violations from STA report (December 2025)
-
 # Reset synchronizer to calibration histogram (Violations #1-10: -0.193ns to -0.046ns)
 # The reset sync signal i_reset_sync|sync3 fans out to all 256 histogram entries during reset.
 # This massive fanout causes setup violations. Reset is asynchronous and only happens at startup.
@@ -112,8 +99,6 @@ set_multicycle_path -hold 2 -from [get_registers {*i_reset_sync|sync3*}] -to [ge
 # The prefix encoder adders have long combinatorial paths computing thermometer code position.
 # Allow 2 cycles for encoder arithmetic at 400 MHz.
 # Note: Removed overly broad wildcard constraint - specific paths already covered by other constraints
-
-# ---------- PRIORITY 2 TIMING FIXES ----------
 
 # Histogram read address to value pipeline (Violations #6-7, #12-14, #28, #30: -0.132ns to -0.062ns)
 # The histogram read path (calib_hist_read_addr -> calib_hist_value_d1) is a 256:1 mux.
@@ -147,8 +132,6 @@ set_multicycle_path -hold 2 -from [get_registers {*|calib_ready*}] -to [get_regi
 set_multicycle_path -setup 3 -from [get_registers {*|calib_done*}] -to [get_registers {*|adjm_s1[*]}]
 set_multicycle_path -hold 2 -from [get_registers {*|calib_done*}] -to [get_registers {*|adjm_s1[*]}]
 
-# ---------- PRIORITY 3 TIMING FIXES ----------
-
 # TDL calibration sum to fine accumulator (Violations #43-58, #73-77: -0.039ns to -0.019ns)
 # The tdl_cal_sum_reg drives tdl_cal_fine_acc for TDL fine delay calibration.
 # This is only active during startup calibration, not real-time operation.
@@ -179,8 +162,6 @@ set_multicycle_path -hold 1 -from [get_registers {*sweep_cross_duty[*]}] -to [ge
 set_multicycle_path -setup 2 -from [get_registers {*calib_histogram[*][*]}] -to [get_registers {*calib_hist_value_d1[*]}]
 set_multicycle_path -hold 1 -from [get_registers {*calib_histogram[*][*]}] -to [get_registers {*calib_hist_value_d1[*]}]
 
-# ---------- ADDITIONAL TIMING FIXES (Second pass - December 10, 2025) ----------
-
 # TDC result to v_tdc_min calibration tracking (-0.069ns to -0.001ns violations)
 # The tdc_result output drives the v_tdc_min tracking during startup calibration.
 # This is the comparison path that updates min/max TDC codes during boot.
@@ -196,3 +177,20 @@ set_multicycle_path -hold 3 -from [get_registers {*i_tdc|tdc_result[*]}] -to [ge
 # Allow 2 cycles for TDL sum to coarse bias update at 400 MHz.
 set_multicycle_path -setup 2 -from [get_registers {*tdl_cal_sum_reg[*]}] -to [get_registers {*coarse_bias_cal[*]}]
 set_multicycle_path -hold 1 -from [get_registers {*tdl_cal_sum_reg[*]}] -to [get_registers {*coarse_bias_cal[*]}]
+
+# Calibration search index to mode value (-0.103ns to -0.003ns violations)
+# The calib_search_idx drives calib_mode_value during the calibration search phase.
+# This is the main logic that determines the optimal TDC coarse bias setting.
+# The search iterates through histogram bins finding the dual-lobe center point.
+# This only happens once during startup calibration and is not timing-critical.
+# Allow 2 cycles for search index to mode value computation at 400 MHz.
+set_multicycle_path -setup 2 -from [get_registers {*i_tdc|calib_search_idx[*]}] -to [get_registers {*i_tdc|calib_mode_value[*]}]
+set_multicycle_path -hold 1 -from [get_registers {*i_tdc|calib_search_idx[*]}] -to [get_registers {*i_tdc|calib_mode_value[*]}]
+
+# Calibration search index to max count (-0.101ns to -0.089ns violations)
+# The calib_search_idx drives calib_max_count during histogram search.
+# This tracks the maximum histogram bin count to identify the mode peaks.
+# Only active during startup calibration, not timing-critical.
+# Allow 2 cycles for search index to max count tracking at 400 MHz.
+set_multicycle_path -setup 2 -from [get_registers {*i_tdc|calib_search_idx[*]}] -to [get_registers {*i_tdc|calib_max_count[*]}]
+set_multicycle_path -hold 1 -from [get_registers {*i_tdc|calib_search_idx[*]}] -to [get_registers {*i_tdc|calib_max_count[*]}]

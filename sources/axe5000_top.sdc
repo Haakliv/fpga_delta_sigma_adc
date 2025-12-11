@@ -37,6 +37,11 @@ create_clock -name VCLK_TEST_PIN -period 100.000
 # Async user input
 set_false_path -from [get_ports {USER_BTN}]
 
+# External trigger input (optional hardware trigger for burst capture)
+set_input_delay -clock [get_clocks CLK_25M] -max 0.0 -source_latency_included [get_ports {TRIGGER_IN}]
+set_input_delay -clock [get_clocks CLK_25M] -min 0.0 -source_latency_included [get_ports {TRIGGER_IN}]
+set_false_path -from [get_ports {TRIGGER_IN}]
+
 # UART RX input (asynchronous serial interface)
 # Set nominal constraint with virtual clock, then false path
 set_input_delay -clock [get_clocks VCLK_UART] -max 0.0 -source_latency_included [get_ports {UART_RX}]
@@ -60,7 +65,15 @@ set_output_delay -clock [get_clocks VCLK_TEST_PIN] -max 0.0 -source_latency_incl
 set_output_delay -clock [get_clocks VCLK_TEST_PIN] -min 0.0 -source_latency_included [get_ports {TEST_PIN}]
 set_false_path -to [get_ports {TEST_PIN}]
 
-# LED1 removed from design - not needed
+# Debug LED (TDC valid indicator)
+set_output_delay -clock [get_clocks VCLK_TEST_PIN] -max 0.0 -source_latency_included [get_ports {LED1}]
+set_output_delay -clock [get_clocks VCLK_TEST_PIN] -min 0.0 -source_latency_included [get_ports {LED1}]
+set_false_path -to [get_ports {LED1}]
+
+# VADJ power control (static configuration pin)
+set_output_delay -clock [get_clocks CLK_25M] -max 0.0 -source_latency_included [get_ports {VSEL_1V3}]
+set_output_delay -clock [get_clocks CLK_25M] -min 0.0 -source_latency_included [get_ports {VSEL_1V3}]
+set_false_path -to [get_ports {VSEL_1V3}]
 
 # ---------- Analog Feedback Loop I/O (ANALOG_IN / FEEDBACK_OUT) ----------
 # These pins form a continuous-time analog feedback loop for the delta-sigma ADC.
@@ -124,3 +137,39 @@ set_multicycle_path -setup 2 -from [get_registers {*mag*_s1b*}] -to [get_registe
 set_multicycle_path -hold 1 -from [get_registers {*mag*_s1b*}] -to [get_registers {*d_used_s1c*}]
 set_multicycle_path -setup 2 -from [get_registers {*fine_s1b*}] -to [get_registers {*d_used_s1c*}]
 set_multicycle_path -hold 1 -from [get_registers {*fine_s1b*}] -to [get_registers {*d_used_s1c*}]
+
+# ---------- CIC Multi-bit Decimator Constraints ----------
+# Comb filter stages run at decimated rate (once per 8192 cycles)
+# The comb state machine takes 3 states total - allow 4 cycles per stage
+
+# Comb stage 1: decimated -> comb1_out
+set_multicycle_path -setup 4 -from [get_registers {*i_cic_multibit*decimated*}] -to [get_registers {*i_cic_multibit*comb1_out*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_cic_multibit*decimated*}] -to [get_registers {*i_cic_multibit*comb1_out*}]
+set_multicycle_path -setup 4 -from [get_registers {*i_cic_multibit*comb1_d*}] -to [get_registers {*i_cic_multibit*comb1_out*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_cic_multibit*comb1_d*}] -to [get_registers {*i_cic_multibit*comb1_out*}]
+
+# Comb stage 2: comb1_out -> comb2_out
+set_multicycle_path -setup 4 -from [get_registers {*i_cic_multibit*comb1_out*}] -to [get_registers {*i_cic_multibit*comb2_out*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_cic_multibit*comb1_out*}] -to [get_registers {*i_cic_multibit*comb2_out*}]
+set_multicycle_path -setup 4 -from [get_registers {*i_cic_multibit*comb2_d*}] -to [get_registers {*i_cic_multibit*comb2_out*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_cic_multibit*comb2_d*}] -to [get_registers {*i_cic_multibit*comb2_out*}]
+
+# Comb stage 3: comb2_out -> comb3_out
+set_multicycle_path -setup 4 -from [get_registers {*i_cic_multibit*comb2_out*}] -to [get_registers {*i_cic_multibit*comb3_out*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_cic_multibit*comb2_out*}] -to [get_registers {*i_cic_multibit*comb3_out*}]
+set_multicycle_path -setup 4 -from [get_registers {*i_cic_multibit*comb3_d*}] -to [get_registers {*i_cic_multibit*comb3_out*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_cic_multibit*comb3_d*}] -to [get_registers {*i_cic_multibit*comb3_out*}]
+
+# ---------- CIC Integrator Constraints ----------
+# Integrators are gated by CE (ref_clock edge detect at 50MHz = 1/8 of 400MHz)
+# Allow 2 cycles for integrator paths
+set_multicycle_path -setup 2 -from [get_registers {*i_cic_multibit*int1*}] -to [get_registers {*i_cic_multibit*int2*}]
+set_multicycle_path -hold 1 -from [get_registers {*i_cic_multibit*int1*}] -to [get_registers {*i_cic_multibit*int2*}]
+set_multicycle_path -setup 2 -from [get_registers {*i_cic_multibit*int2*}] -to [get_registers {*i_cic_multibit*int3*}]
+set_multicycle_path -hold 1 -from [get_registers {*i_cic_multibit*int2*}] -to [get_registers {*i_cic_multibit*int3*}]
+
+# ---------- CIC Input Pipeline (TDC Combination to Integrator) ----------
+# The cic_input_tdc signal combines DAC and TDC contributions before feeding the integrators.
+# This path has 2 pipeline stages to meet 400MHz timing. Allow 2 cycles.
+set_multicycle_path -setup 2 -from [get_registers {*cic_input_tdc*}] -to [get_registers {*i_cic_multibit*int1*}]
+set_multicycle_path -hold 1 -from [get_registers {*cic_input_tdc*}] -to [get_registers {*i_cic_multibit*int1*}]

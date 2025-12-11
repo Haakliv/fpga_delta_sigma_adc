@@ -46,7 +46,6 @@ set_global_assignment -name PWRMGT_VOLTAGE_OUTPUT_FORMAT "LINEAR FORMAT"
 set_global_assignment -name PWRMGT_LINEAR_FORMAT_N "-12"
 set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
 set_global_assignment -name MAX_CORE_JUNCTION_TEMP 100
-set_global_assignment -name VHDL_FILE sources/tdc_monitor_uart_streamer.vhd
 set_global_assignment -name SDC_FILE sources/axe5000_top.sdc
 set_global_assignment -name VHDL_FILE sources/tdc_quantizer.vhd
 set_global_assignment -name VHDL_FILE sources/tdc_adc_top.vhd
@@ -127,3 +126,5 @@ set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_uart_streamer|uart_tx_
 set_instance_assignment -name MESSAGE_DISABLE 13410 -to LED1 -entity axe5000_top
 set_instance_assignment -name MESSAGE_DISABLE 13024 -to LED1 -entity axe5000_top
 set_instance_assignment -name SLEW_RATE 3 -to TEST_PIN -entity axe5000_top
+set_location_assignment PIN_AJ24 -to VSEL_1V3 -comment IOBANK_5A
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to VSEL_1V3 -entity axe5000_top

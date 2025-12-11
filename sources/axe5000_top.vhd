@@ -10,12 +10,13 @@ use ieee.numeric_std.all;
 
 entity axe5000_top is
   generic(
-    -- ADC Decimation: 50MHz / 25600 ≈ 1953 S/s
-    -- ASCII mode: 115200/10/6 = 1920 S/s max, so use higher decimation
-    GC_ADC_DECIMATION  : positive := 25600;  -- Decimation for ~1953 S/s (fits ASCII mode)
-    GC_UART_BINARY     : boolean  := false; -- false=ASCII hex (human readable)
-    GC_CAPTURE_DEPTH   : positive := 4096;  -- Burst capture buffer depth
-    GC_CAPTURE_ENABLED : boolean  := false  -- Disable burst capture - just stream continuously
+    -- ADC Decimation: 50MHz / 6400 ≈ 7812 S/s base rate
+    -- Prescaler allows runtime adjustment for stream mode (UART limited)
+    -- Burst mode captures at full rate, streams at UART-limited rate
+    GC_ADC_DECIMATION  : positive := 6400;   -- Base decimation for ~7.8 kS/s
+    GC_UART_BINARY     : boolean  := false;  -- false=ASCII hex (human readable)
+    GC_CAPTURE_DEPTH   : positive := 4096;   -- Burst capture buffer depth
+    GC_CAPTURE_ENABLED : boolean  := true    -- Enable burst capture mode
   );
   port(
     -- Clock and Reset
@@ -33,7 +34,9 @@ entity axe5000_top is
     LED1         : out std_logic;       -- Debug LED (TDC valid indicator)
     USER_BTN     : in  std_logic;       -- Active low reset
     -- Optional trigger (directly triggers capture when GC_CAPTURE_ENABLED)
-    TRIGGER_IN   : in  std_logic := '0' -- Active high trigger for capture start
+    TRIGGER_IN   : in  std_logic := '0'; -- Active high trigger for capture start
+    -- Power Control
+    VSEL_1V3     : out std_logic        -- Select 1.3V VADJ for CRUVI
   );
 end entity;
 
@@ -77,6 +80,9 @@ architecture rtl of axe5000_top is
   signal disable_tdc_contrib : std_logic := '0';  -- 0=TDC enabled, 1=TDC disabled (CIC-only)
   signal disable_eq_filter   : std_logic := '0';  -- 0=EQ enabled, 1=EQ bypassed
   signal disable_lp_filter   : std_logic := '0';  -- 0=LP enabled, 1=LP bypassed
+  
+  -- Mode control: Burst vs Stream
+  signal burst_mode          : std_logic := '1';  -- 1=burst mode (default), 0=stream mode
   
   -- UART RX command decoder
   signal uart_rx_data     : std_logic_vector(7 downto 0);
@@ -123,6 +129,7 @@ begin
   TEST_PIN     <= adc_sample_valid;     -- Sample valid pulse
   LED1         <= capture_active or dump_active; -- LED shows capture/dump activity
   FEEDBACK_OUT <= w_dac_bit;            -- DAC output with external RC filter
+  VSEL_1V3     <= '1';                  -- Select 1.3V VADJ for CRUVI
 
   i_niosv : adc_system
     port map(
@@ -161,6 +168,7 @@ begin
       GC_DATA_WIDTH => C_ADC_DATA_WIDTH,
       GC_TDC_OUTPUT => 16,
       GC_SIM        => false,
+      GC_FAST_SIM   => false,
       GC_OPEN_LOOP  => false  -- Normal closed-loop operation
     )
     port map(
@@ -212,14 +220,25 @@ begin
 
   -- ========================================================================
   -- UART Command Decoder
-  -- Commands: 'C' = start capture, 'D' = dump buffer
+  -- Commands:
+  --   'C' = start Capture (burst mode)
+  --   'D' = Dump buffer
+  --   'B' = switch to Burst mode (capture-then-dump)
+  --   'S' = switch to Stream mode (continuous output, drops samples if UART busy)
+  --   'X' = toggle TDC contribution
+  --   'E' = toggle EQ filter
+  --   'L' = toggle LP filter
   -- ========================================================================
   p_uart_cmd : process(sysclk_pd)
   begin
     if rising_edge(sysclk_pd) then
       if rst = '1' then
-        capture_start <= '0';
-        capture_dump  <= '0';
+        capture_start       <= '0';
+        capture_dump        <= '0';
+        disable_tdc_contrib <= '0';
+        disable_eq_filter   <= '0';
+        disable_lp_filter   <= '0';
+        burst_mode          <= '1';      -- Default: burst mode
       else
         capture_start <= '0';  -- Default: single-cycle pulses
         capture_dump  <= '0';
@@ -236,6 +255,10 @@ begin
               capture_start <= '1';
             when x"44" | x"64" =>  -- 'D' or 'd' = Dump
               capture_dump <= '1';
+            when x"42" | x"62" =>  -- 'B' or 'b' = Burst mode
+              burst_mode <= '1';
+            when x"53" | x"73" =>  -- 'S' or 's' = Stream mode
+              burst_mode <= '0';
             when x"58" | x"78" =>  -- 'X' or 'x' = Toggle TDC contribution
               disable_tdc_contrib <= not disable_tdc_contrib;
             when x"45" | x"65" =>  -- 'E' or 'e' = Toggle EQ filter
@@ -247,8 +270,8 @@ begin
           end case;
         end if;
         
-        -- Auto-dump after capture complete (optional behavior)
-        if capture_done = '1' and dump_active = '0' then
+        -- Auto-dump after capture complete (burst mode only)
+        if burst_mode = '1' and capture_done = '1' and dump_active = '0' then
           capture_dump <= '1';
         end if;
       end if;

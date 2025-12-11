@@ -37,16 +37,17 @@ except ImportError:
     print("Then: pip install pyserial")
     exit(1)
 
-# Voltage scaling for FPGA I/O bank (1.3V)
-# Q15 bipolar: '0' -> -1 (0% duty, 0V avg), '1' -> +1 (100% duty, ~1.3V avg)
-# Map Q15 to 0-1300 mV range
-V_CENTER_MV = 650
-V_HALF_SCALE_MV = 650
+# Voltage reference and scaling (Matched to adc_monitor.py)
+V_REF = 1.25
+V_CENTER_MV = (V_REF / 2) * 1000       # 625
+V_HALF_SCALE_MV = (V_REF / 2) * 1000   # 625
 
-# Comparator offset calibration
-# The LVDS comparator has inherent offset - feedback must be ~50mV higher than
-# input for the comparator to see equality. Subtract this offset to show true input voltage.
-COMPARATOR_OFFSET_MV = 50
+# Calibration coefficients (Quadratic fit)
+# Based on measurements from 0.2V to 1.2V
+# Ideal_mV = A * Measured_mV^2 + B * Measured_mV + C
+CAL_COEFF_A = -2.33467355e-05
+CAL_COEFF_B = 1.07015485e+00
+CAL_COEFF_C = -5.41235472e+01
 
 
 @dataclass
@@ -61,13 +62,25 @@ class TDCMonitorSample:
 
 
 def q15_to_millivolts(q_value: int) -> float:
-    """Convert Q15 signed value to millivolts (input voltage).
+    """Convert a Q15 signed value to millivolts (calibrated input voltage).
     
-    The ADC measures feedback voltage; we subtract comparator offset to get input.
-    Formula: mV = (value * 650) / 32768 + 650 - 50
+    The ADC measures the feedback voltage (DAC output averaged by RC filter).
+    Calibration model: Quadratic fit based on measured data.
+    Ideal = A * Measured^2 + B * Measured + C
     """
-    mv = (q_value * V_HALF_SCALE_MV) / 32768 + V_CENTER_MV - COMPARATOR_OFFSET_MV
-    return max(0, min(1250, mv))
+    # Step 1: Calculate raw measured voltage from Q15
+    mv_measured = (q_value * V_HALF_SCALE_MV) / 32768 + V_CENTER_MV
+    
+    # Step 2: Apply quadratic calibration
+    mv_calibrated = (CAL_COEFF_A * (mv_measured**2)) + (CAL_COEFF_B * mv_measured) + CAL_COEFF_C
+    
+    # Saturate to valid range (0 to V_REF after calibration)
+    if mv_calibrated < 0:
+        mv_calibrated = 0
+    elif mv_calibrated > V_REF * 1000:
+        mv_calibrated = V_REF * 1000
+    
+    return mv_calibrated
 
 
 def find_uart_port() -> str:
