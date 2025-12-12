@@ -173,3 +173,44 @@ set_multicycle_path -hold 1 -from [get_registers {*i_cic_multibit*int2*}] -to [g
 # This path has 2 pipeline stages to meet 400MHz timing. Allow 2 cycles.
 set_multicycle_path -setup 2 -from [get_registers {*cic_input_tdc*}] -to [get_registers {*i_cic_multibit*int1*}]
 set_multicycle_path -hold 1 -from [get_registers {*cic_input_tdc*}] -to [get_registers {*i_cic_multibit*int1*}]
+
+# ---------- CIC DSP Multiplier to Scale Pipeline ----------
+# The CIC output scaling uses DSP multipliers (mult_0) that feed into the scale_pipe
+# pipeline registers. These paths only need to complete once per decimation period.
+# With decimation=128, the output valid rate is 50MHz/128 = 390kS/s, giving 128 cycles.
+# Conservative setting: 8 cycles (still far more than needed).
+set_multicycle_path -setup 8 -from [get_registers {*i_cic_multibit|mult_0*}] -to [get_registers {*i_cic_multibit|scale_pipe*}]
+set_multicycle_path -hold 7 -from [get_registers {*i_cic_multibit|mult_0*}] -to [get_registers {*i_cic_multibit|scale_pipe*}]
+
+# ---------- CIC Scale Pipeline Stages ----------  
+# The scale_pipe registers form a multi-stage pipeline for output scaling.
+# Each stage operates at the decimated output rate.
+set_multicycle_path -setup 8 -from [get_registers {*i_cic_multibit|scale_pipe1*}] -to [get_registers {*i_cic_multibit|scale_pipe*}]
+set_multicycle_path -hold 7 -from [get_registers {*i_cic_multibit|scale_pipe1*}] -to [get_registers {*i_cic_multibit|scale_pipe*}]
+
+# ---------- Reset Synchronizer to CIC/TDC (Async Reset Domain Crossing) ----------
+# Reset synchronizer outputs are held stable for many cycles during reset release.
+# These paths are not timing-critical.
+set_multicycle_path -setup 4 -from [get_registers {*i_reset_sync|sync3}] -to [get_registers {*i_cic_multibit|*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_reset_sync|sync3}] -to [get_registers {*i_cic_multibit|*}]
+set_multicycle_path -setup 4 -from [get_registers {*i_reset_sync|sync3}] -to [get_registers {*tdl_cal_fine_acc*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_reset_sync|sync3}] -to [get_registers {*tdl_cal_fine_acc*}]
+set_multicycle_path -setup 4 -from [get_registers {*i_tdc|i_reset_sync|sync3}] -to [get_registers {*coarse_bias_calibrated*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_tdc|i_reset_sync|sync3}] -to [get_registers {*coarse_bias_calibrated*}]
+set_multicycle_path -setup 4 -from [get_registers {*i_tdc|i_reset_sync|sync3}] -to [get_registers {*calib_hist_read_addr*}]
+set_multicycle_path -hold 3 -from [get_registers {*i_tdc|i_reset_sync|sync3}] -to [get_registers {*calib_hist_read_addr*}]
+
+# ---------- TDC Calibration Histogram Pipeline ----------
+# Calibration histogram read path has multi-cycle pipeline
+set_multicycle_path -setup 4 -from [get_registers {*calib_hist_read_d1*}] -to [get_registers {*calib_mode_value*}]
+set_multicycle_path -hold 3 -from [get_registers {*calib_hist_read_d1*}] -to [get_registers {*calib_mode_value*}]
+
+# ---------- TDC Calibration Min/Max Self-Paths ----------
+# The v_tdc_max comparison logic has long paths back to itself
+set_multicycle_path -setup 4 -from [get_registers {*v_tdc_max*}] -to [get_registers {*v_tdc_max*}]
+set_multicycle_path -hold 3 -from [get_registers {*v_tdc_max*}] -to [get_registers {*v_tdc_max*}]
+
+# ---------- Use Closed Loop TDC to DAC Output ----------
+# The use_closed_loop_tdc flag controls DAC output mux - slow control signal
+set_multicycle_path -setup 4 -from [get_registers {*use_closed_loop_tdc*}] -to [get_registers {*dac_out_ff*}]
+set_multicycle_path -hold 3 -from [get_registers {*use_closed_loop_tdc*}] -to [get_registers {*dac_out_ff*}]

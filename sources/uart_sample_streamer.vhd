@@ -25,7 +25,9 @@ entity uart_sample_streamer is
         -- UART transmit interface
         uart_tx_data  : out std_logic_vector(7 downto 0);
         uart_tx_valid : out std_logic;
-        uart_tx_ready : in  std_logic
+        uart_tx_ready : in  std_logic;
+        -- Flow control
+        ready         : out std_logic := '1' -- Ready to accept new sample
     );
 end entity;
 
@@ -96,6 +98,8 @@ begin
     -- Binary Mode: Send LSB first, then MSB (2 bytes per sample)
     -- ========================================================================
     g_binary_mode : if GC_BINARY_MODE generate
+        ready <= '1' when (bin_state = ST_BIN_IDLE and sample_latched = '0') else '0';
+        
         p_binary_sm : process(clk)
         begin
             if rising_edge(clk) then
@@ -145,6 +149,8 @@ begin
     -- ASCII Mode: Send 4 hex digits + CR + LF (6 bytes per sample)
     -- ========================================================================
     g_ascii_mode : if not GC_BINARY_MODE generate
+        ready <= '1' when (uart_state = ST_UART_IDLE and sample_latched = '0') else '0';
+
         p_uart_sm : process(clk)
         begin
             if rising_edge(clk) then

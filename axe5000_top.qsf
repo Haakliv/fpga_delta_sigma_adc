@@ -93,7 +93,7 @@ set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to FEEDBACK_OUT -entit
 set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to FEEDBACK_OUT -entity axe5000_top
 set_instance_assignment -name ENABLE_BUS_HOLD_CIRCUITRY OFF -to FEEDBACK_OUT -entity axe5000_top
 set_instance_assignment -name SLEW_RATE 3 -to FEEDBACK_OUT -entity axe5000_top
-set_location_assignment PIN_AC7 -to TRIGGER_IN -comment IOBANK_2A_T
+set_location_assignment PIN_V3 -to TRIGGER_IN -comment IOBANK_2A_T
 set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to TRIGGER_IN -entity axe5000_top
 set_global_assignment -name FLOW_ENABLE_INTERACTIVE_TIMING_ANALYZER OFF
 set_global_assignment -name IP_FILE ip/adc_system/iopll_tdc.ip

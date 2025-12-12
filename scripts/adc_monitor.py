@@ -120,26 +120,33 @@ def trigger_signal_generator() -> None:
     pass
 
 
-def capture_burst(ser: serial.Serial, expected_samples: int = 4096) -> list[float]:
+def capture_burst(ser: serial.Serial, expected_samples: int = 131072) -> list[float]:
     """Capture a burst of ADC samples from the FPGA.
     
     Args:
         ser: Serial port object
-        expected_samples: Number of samples to capture (default 4096 per FPGA buffer)
+        expected_samples: Number of samples to capture (default 131072 per FPGA buffer)
     
     Returns:
         List of calibrated voltage measurements in millivolts
     """
     print(f"Capturing burst of {expected_samples} samples...")
     
-    # Send burst mode command to FPGA
-    ser.write(b'B')
+    # Clear any pending data
+    ser.reset_input_buffer()
+    
+    # Send capture command to start filling buffer, then dump
+    print("Sending capture command (C)...")
+    ser.write(b'C')
     ser.flush()
-    time.sleep(0.1)  # Allow FPGA to enter burst mode
+    time.sleep(0.5)  # Allow FPGA to fill buffer (~0.34 seconds at 390kS/s for 131072 samples)
+    
+    # FPGA auto-dumps after capture complete, so just wait for data
+    print("Waiting for data dump...")
     
     samples_mv = []
     timeout_start = time.time()
-    timeout_duration = 10.0  # 10 second timeout
+    timeout_duration = 180.0  # 180 second timeout (131072 samples @ ~700-1000 samples/sec over UART)
     
     while len(samples_mv) < expected_samples:
         if time.time() - timeout_start > timeout_duration:
@@ -157,9 +164,12 @@ def capture_burst(ser: serial.Serial, expected_samples: int = 4096) -> list[floa
         mv = q15_to_millivolts(q_value)
         samples_mv.append(mv)
         
-        # Progress indicator every 512 samples
-        if len(samples_mv) % 512 == 0:
-            print(f"  Captured {len(samples_mv)}/{expected_samples} samples...")
+        # Progress indicator every 4096 samples
+        if len(samples_mv) % 4096 == 0:
+            elapsed = time.time() - timeout_start
+            rate = len(samples_mv) / elapsed if elapsed > 0 else 0
+            eta = (expected_samples - len(samples_mv)) / rate if rate > 0 else 0
+            print(f"  Received {len(samples_mv)}/{expected_samples} samples... ({rate:.0f} S/s, ETA: {eta:.0f}s)")
     
     print(f"Burst capture complete: {len(samples_mv)} samples")
     return samples_mv

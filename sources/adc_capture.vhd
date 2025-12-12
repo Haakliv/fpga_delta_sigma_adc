@@ -4,9 +4,9 @@ use ieee.numeric_std.all;
 
 entity adc_capture is
     generic(
-        GC_DATA_WIDTH : positive := 16; -- Sample data width
-        GC_DEPTH      : positive := 4096; -- Buffer depth (samples)
-        GC_ADDR_WIDTH : positive := 12  -- Address width (log2(GC_DEPTH))
+        GC_DATA_WIDTH : positive := 16;     -- Sample data width
+        GC_DEPTH      : positive := 131072; -- Buffer depth (samples)
+        GC_ADDR_WIDTH : positive := 17      -- Address width (log2(GC_DEPTH))
     );
     port(
         -- Clock and reset
@@ -57,9 +57,13 @@ architecture rtl of adc_capture is
     signal s_dump_done : std_logic                            := '0';
 
     -- Read pipeline for block RAM (1-cycle read latency)
-    signal rd_data    : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
-    signal rd_valid   : std_logic                                    := '0';
-    signal rd_pending : std_logic                                    := '0'; -- Read request pending
+    signal rd_data      : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
+    signal rd_valid     : std_logic                                    := '0';
+    signal rd_consumed  : std_logic                                    := '0';  -- Sample was consumed
+    
+    -- Dump state machine
+    type T_DUMP_STATE is (ST_IDLE, ST_READ_REQ, ST_READ_WAIT, ST_DATA_VALID, ST_DONE);
+    signal dump_state : T_DUMP_STATE := ST_IDLE;
 
 begin
 
@@ -115,56 +119,73 @@ begin
     -- ========================================================================
     -- Read Side: Dump samples over UART
     -- Uses simple handshaking with dump_ready for flow control
+    -- State machine: IDLE -> READ_REQ -> READ_WAIT -> DATA_VALID -> (repeat or DONE)
     -- ========================================================================
     p_dump : process(clk)
     begin
         if rising_edge(clk) then
             if rst = '1' then
+                dump_state  <= ST_IDLE;
                 s_dumping   <= '0';
                 s_dump_done <= '0';
                 rd_addr     <= (others => '0');
                 rd_valid    <= '0';
-                rd_pending  <= '0';
+                rd_consumed <= '0';
                 rd_data     <= (others => '0');
             else
-                -- Default: clear valid after accepted
-                if rd_valid = '1' and dump_ready = '1' then
-                    rd_valid <= '0';
-                end if;
-                
                 -- Clear dump_done after one cycle (pulse)
                 if s_dump_done = '1' then
                     s_dump_done <= '0';
                 end if;
 
-                -- Start dump on rising edge of start_dump (only when buffer full)
-                if start_dump = '1' and s_dumping = '0' and s_full = '1' then
-                    s_dumping   <= '1';
-                    s_dump_done <= '0';
-                    rd_addr     <= (others => '0');
-                    rd_pending  <= '1'; -- Initiate first read
-                end if;
-
-                -- Dump state machine
-                if s_dumping = '1' then
-                    -- Pipeline: request read, then present data on next cycle
-                    if rd_pending = '1' then
-                        -- Read from RAM (1-cycle latency)
-                        rd_data    <= ram(to_integer(rd_addr));
-                        rd_pending <= '0';
-                        rd_valid   <= '1';
-                    elsif rd_valid = '0' or dump_ready = '1' then
-                        -- Previous data accepted, advance to next
-                        if rd_addr = to_unsigned(GC_DEPTH - 1, GC_ADDR_WIDTH) then
-                            -- All samples sent
-                            s_dumping   <= '0';
-                            s_dump_done <= '1';  -- Pulse to signal capture process to clear s_full
-                        else
-                            rd_addr    <= rd_addr + 1;
-                            rd_pending <= '1';
+                case dump_state is
+                    when ST_IDLE =>
+                        rd_valid <= '0';
+                        -- Start dump on rising edge of start_dump (only when buffer full)
+                        if start_dump = '1' and s_full = '1' then
+                            dump_state  <= ST_READ_REQ;
+                            s_dumping   <= '1';
+                            s_dump_done <= '0';
+                            rd_addr     <= (others => '0');
                         end if;
-                    end if;
-                end if;
+                    
+                    when ST_READ_REQ =>
+                        -- Issue read request to RAM (address already set)
+                        dump_state <= ST_READ_WAIT;
+                    
+                    when ST_READ_WAIT =>
+                        -- RAM read latency cycle - data available next cycle
+                        rd_data    <= ram(to_integer(rd_addr));
+                        rd_valid   <= '1';
+                        dump_state <= ST_DATA_VALID;
+                    
+                    when ST_DATA_VALID =>
+                        -- Wait for UART to consume data (ready goes low then high)
+                        -- Track when ready goes low (sample was latched)
+                        if dump_ready = '0' then
+                            rd_consumed <= '1';
+                        end if;
+                        -- Advance only after sample was consumed AND ready is back high
+                        if rd_consumed = '1' and dump_ready = '1' then
+                            rd_valid    <= '0';
+                            rd_consumed <= '0';
+                            -- Check if we've sent all samples
+                            if rd_addr = to_unsigned(GC_DEPTH - 1, GC_ADDR_WIDTH) then
+                                dump_state <= ST_DONE;
+                            else
+                                rd_addr    <= rd_addr + 1;
+                                dump_state <= ST_READ_REQ;
+                            end if;
+                        end if;
+                    
+                    when ST_DONE =>
+                        s_dumping   <= '0';
+                        s_dump_done <= '1';
+                        dump_state  <= ST_IDLE;
+                    
+                    when others =>
+                        dump_state <= ST_IDLE;
+                end case;
             end if;
         end if;
     end process;

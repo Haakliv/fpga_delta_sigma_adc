@@ -10,12 +10,13 @@ use ieee.numeric_std.all;
 
 entity axe5000_top is
   generic(
-    -- ADC Decimation: 50MHz / 6400 ≈ 7812 S/s base rate
-    -- Prescaler allows runtime adjustment for stream mode (UART limited)
-    -- Burst mode captures at full rate, streams at UART-limited rate
-    GC_ADC_DECIMATION  : positive := 6400;   -- Base decimation for ~7.8 kS/s
+    -- ADC Decimation: 50MHz / 128 ≈ 390 kS/s for burst capture
+    -- In burst mode, samples stored in RAM at full rate (~390 kS/s)
+    -- During dump, transmitted at UART-limited rate (~1.9 kS/s)
+    -- Stream mode will drop samples at this rate (use burst mode instead)
+    GC_ADC_DECIMATION  : positive := 128;    -- Fast decimation for burst mode (390 kS/s)
     GC_UART_BINARY     : boolean  := false;  -- false=ASCII hex (human readable)
-    GC_CAPTURE_DEPTH   : positive := 4096;   -- Burst capture buffer depth
+    GC_CAPTURE_DEPTH   : positive := 131072; -- Burst capture buffer depth (128K samples)
     GC_CAPTURE_ENABLED : boolean  := true    -- Enable burst capture mode
   );
   port(
@@ -43,7 +44,7 @@ end entity;
 architecture rtl of axe5000_top is
 
   constant C_ADC_DATA_WIDTH : positive := 16;
-  constant C_CAPTURE_ADDR_W : positive := 12;  -- log2(4096)
+  constant C_CAPTURE_ADDR_W : positive := 17;  -- log2(131072)
 
   signal sysclk_pd     : std_logic;     -- 100 MHz system clock from PLL
   signal clk_tdc_400m  : std_logic;     -- 400 MHz TDC clock from PLL
@@ -75,6 +76,7 @@ architecture rtl of axe5000_top is
   -- UART mux signals (live vs dump mode)
   signal streamer_data    : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
   signal streamer_valid   : std_logic;
+  signal streamer_ready   : std_logic;
   
   -- Runtime control
   signal disable_tdc_contrib : std_logic := '0';  -- 0=TDC enabled, 1=TDC disabled (CIC-only)
@@ -305,10 +307,14 @@ begin
         dump_ready    => dump_ready
       );
     
-    -- Mux: During dump, send captured data; otherwise send live samples
+    -- Mux: During dump, send captured data
+    -- In burst mode: nothing sent until dump command
+    -- In stream mode: send live samples continuously
     streamer_data  <= dump_data  when dump_active = '1' else adc_sample_data;
-    streamer_valid <= dump_valid when dump_active = '1' else adc_sample_valid;
-    dump_ready     <= uart_tx_ready when dump_active = '1' else '0';
+    streamer_valid <= dump_valid when dump_active = '1' else
+                      adc_sample_valid when burst_mode = '0' else
+                      '0';  -- Burst mode: suppress output until dump
+    dump_ready     <= streamer_ready when dump_active = '1' else '0';
   end generate;
 
   g_no_capture : if not GC_CAPTURE_ENABLED generate
@@ -333,7 +339,8 @@ begin
       sample_valid  => streamer_valid,
       uart_tx_data  => uart_tx_data,
       uart_tx_valid => uart_tx_valid,
-      uart_tx_ready => uart_tx_ready
+      uart_tx_ready => uart_tx_ready,
+      ready         => streamer_ready
     );
 
 end architecture rtl;
