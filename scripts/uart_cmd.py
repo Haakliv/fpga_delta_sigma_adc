@@ -52,23 +52,71 @@ def send_command(cmd):
             elif cmd.upper() == 'L':
                 print("LP filter toggled (on<->off)")
                 print("When OFF, signal bypasses lowpass filter (no anti-aliasing)")
+            elif cmd.upper() == 'N':
+                print("TDC sign toggled (negate on<->off)")
+                print("When ON, TDC contribution sign is inverted (test sign correctness)")
+            elif cmd.upper() == 'F':
+                print("Fast dump mode toggled (4096 samples on<->off)")
+                print("When ON, only last 4096 samples are dumped (~2.2s vs 69s)")
+            elif cmd.upper() == 'T':
+                print("Trigger mode toggled (edge<->level)")
+                print("Edge: triggers on rising edge only")
+                print("Level: triggers while input is high (use for DC testing)")
+            elif cmd.upper() == 'B':
+                print("Burst mode enabled")
+                print("Captures to buffer, then dumps on command or auto after HW trigger")
+            elif cmd.upper() == 'S':
+                print("Stream mode enabled")
+                print("Continuous output (may drop samples if UART busy)")
+            elif cmd == '0':
+                print("Full dump mode set (131072 samples)")
+            elif cmd == '1':
+                print("Fast dump mode set (4096 samples)")
+            elif cmd == '2':
+                print("TDC gain set to 1x (default)")
+            elif cmd == '3':
+                print("TDC gain set to 2x")
+            elif cmd == '4':
+                print("TDC gain set to 4x")
+            elif cmd == '5':
+                print("TDC gain set to 8x")
+            elif cmd == '6':
+                print("TDC gain set to 16x")
+            elif cmd == '7':
+                print("TDC gain set to 32x")
+            elif cmd == '8':
+                print("TDC gain set to 64x")
+            elif cmd == '9':
+                print("TDC gain set to 128x")
     except serial.SerialException as e:
         print(f"Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1].upper() not in ['T', 'A', 'C', 'D', 'X', 'E', 'L']:
+    if len(sys.argv) != 2 or sys.argv[1] not in ['T', 'A', 'C', 'D', 'X', 'E', 'L', 'N', 'F', 'B', 'S', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
         print("Usage: python uart_cmd.py <command>")
         print("")
         print("Commands:")
-        print("  T - TDC monitor mode")
-        print("  A - ADC sample mode")
-        print("  C - Capture samples")
+        print("  C - Capture samples (software trigger)")
         print("  D - Dump captured samples")
+        print("  B - Burst mode (capture then dump)")
+        print("  S - Stream mode (continuous output)")
+        print("  0 - Set full dump mode (131072 samples)")
+        print("  1 - Set fast dump mode (4096 samples)")
+        print("  T - Toggle trigger mode (edge vs level)")
         print("  X - Toggle TDC contribution (on/off)")
+        print("  N - Toggle TDC sign (negate on/off)")
+        print("  2 - Set TDC gain to 1x")
+        print("  3 - Set TDC gain to 2x")
+        print("  4 - Set TDC gain to 4x")
+        print("  5 - Set TDC gain to 8x")
+        print("  6 - Set TDC gain to 16x")
+        print("  7 - Set TDC gain to 32x")
+        print("  8 - Set TDC gain to 64x")
+        print("  9 - Set TDC gain to 128x")
         print("  E - Toggle EQ filter (on/off)")
         print("  L - Toggle LP filter (on/off)")
 
         sys.exit(1)
     
-    send_command(sys.argv[1].upper())
+    send_command(sys.argv[1])

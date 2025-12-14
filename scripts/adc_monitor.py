@@ -11,6 +11,9 @@ from __future__ import annotations
 import time
 from typing import Optional
 
+import numpy as np
+import matplotlib.pyplot as plt
+
 try:
     import serial
     from serial.serialutil import SerialException
@@ -23,6 +26,9 @@ except ImportError:
 # ADC configuration (must match the FPGA design)
 ADC_BITS = 16
 ADC_MAX_VALUE = (1 << ADC_BITS) - 1
+
+# Sample rate (50MHz / 512 decimation = 97.656 kHz)
+SAMPLE_RATE_HZ = 50_000_000 / 512
 
 # Voltage reference and scaling
 # V_REF is the actual hardware reference voltage (VADJ rail)
@@ -120,16 +126,28 @@ def trigger_signal_generator() -> None:
     pass
 
 
-def capture_burst(ser: serial.Serial, expected_samples: int = 131072) -> list[float]:
+def capture_burst(ser: serial.Serial, fast_mode: bool = False) -> list[float]:
     """Capture a burst of ADC samples from the FPGA.
     
     Args:
         ser: Serial port object
-        expected_samples: Number of samples to capture (default 131072 per FPGA buffer)
+        fast_mode: If True, enable short dump mode (4096 samples) before capture
     
     Returns:
         List of calibrated voltage measurements in millivolts
     """
+    # Set dump mode explicitly using '1' (fast) or '0' (full)
+    if fast_mode:
+        expected_samples = 4096
+        print("Setting fast dump mode (4096 samples)...")
+        ser.write(b'1')  # Explicit set to fast mode
+    else:
+        expected_samples = 131072
+        print("Setting full dump mode (131072 samples)...")
+        ser.write(b'0')  # Explicit set to full mode
+    ser.flush()
+    time.sleep(0.1)
+    
     print(f"Capturing burst of {expected_samples} samples...")
     
     # Clear any pending data
@@ -172,6 +190,59 @@ def capture_burst(ser: serial.Serial, expected_samples: int = 131072) -> list[fl
             print(f"  Received {len(samples_mv)}/{expected_samples} samples... ({rate:.0f} S/s, ETA: {eta:.0f}s)")
     
     print(f"Burst capture complete: {len(samples_mv)} samples")
+    return samples_mv
+
+
+def plot_burst(samples_mv: list[float], signal_freq_hz: float = 1000.0) -> None:
+    """Plot burst capture data showing time domain and FFT.
+    
+    Args:
+        samples_mv: List of voltage samples in millivolts
+        signal_freq_hz: Expected signal frequency for time axis scaling (default 1kHz)
+    """
+    samples = np.array(samples_mv)
+    n_samples = len(samples)
+    
+    # Calculate time axis
+    dt = 1.0 / SAMPLE_RATE_HZ
+    t = np.arange(n_samples) * dt * 1000  # Time in milliseconds
+    
+    # Calculate how many samples for 6 cycles of the signal
+    samples_per_cycle = SAMPLE_RATE_HZ / signal_freq_hz
+    samples_for_6_cycles = int(6 * samples_per_cycle)
+    
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+    
+    # Time domain plot (first 6 cycles)
+    plot_samples = min(samples_for_6_cycles, n_samples)
+    ax1.plot(t[:plot_samples], samples[:plot_samples], 'b-', linewidth=0.5)
+    ax1.set_xlabel('Time (ms)')
+    ax1.set_ylabel('Voltage (mV)')
+    ax1.set_title(f'ADC Burst Capture - Time Domain ({signal_freq_hz:.0f}Hz signal, 6 cycles)')
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(0, t[plot_samples-1] if plot_samples > 0 else 1)
+    
+    # FFT plot
+    # Remove DC offset for cleaner FFT
+    samples_ac = samples - np.mean(samples)
+    
+    # Compute FFT
+    fft_result = np.fft.rfft(samples_ac)
+    fft_freq = np.fft.rfftfreq(n_samples, dt)
+    fft_magnitude_db = 20 * np.log10(np.abs(fft_result) / n_samples + 1e-10)
+    
+    # Plot up to Nyquist/4 for clarity
+    max_freq_idx = len(fft_freq) // 4
+    ax2.plot(fft_freq[:max_freq_idx] / 1000, fft_magnitude_db[:max_freq_idx], 'b-', linewidth=0.5)
+    ax2.set_xlabel('Frequency (kHz)')
+    ax2.set_ylabel('Magnitude (dB)')
+    ax2.set_title('FFT Spectrum')
+    ax2.grid(True, alpha=0.3)
+    ax2.set_ylim(-120, 0)
+    
+    plt.tight_layout()
+    plt.show()
     return samples_mv
 
 
@@ -274,12 +345,24 @@ def main() -> None:
     print(f"Range: {(V_CENTER_MV - V_HALF_SCALE_MV + HARDWARE_OFFSET_MV):.1f}mV to {(V_CENTER_MV + V_HALF_SCALE_MV + HARDWARE_OFFSET_MV):.1f}mV")
     print("-" * 80)
     print("\nUsage:")
-    print("  python adc_monitor.py          - Stream mode (continuous real-time)")
-    print("  python adc_monitor.py burst    - Burst mode (4096 samples with analysis)")
+    print("  python adc_monitor.py           - Stream mode (continuous real-time)")
+    print("  python adc_monitor.py burst     - Burst mode (131072 samples with analysis)")
+    print("  python adc_monitor.py burst -f  - Fast burst mode (4096 samples, ~2.2 sec)")
+    print("\nUART Commands (via uart_cmd.py):")
+    print("  0 = Full dump mode (131072 samples)")
+    print("  1 = Fast dump mode (4096 samples)")
+    print("  2 = TDC gain 1x (default)")
+    print("  3 = TDC gain 2x")
+    print("  4 = TDC gain 4x")
+    print("  5 = TDC gain 8x")
+    print("  C = Capture trigger (software)")
+    print("  T = Toggle trigger mode (edge/level)")
+    print("  B = Burst mode, S = Stream mode")
     print("-" * 80)
     
     # Check for burst mode argument
     burst_mode = len(sys.argv) > 1 and sys.argv[1].lower() == 'burst'
+    fast_mode = len(sys.argv) > 2 and sys.argv[2].lower() in ['-f', '--fast']
 
     try:
         with serial.Serial(port, 115200, timeout=1) as ser:
@@ -288,14 +371,14 @@ def main() -> None:
             if burst_mode:
                 # Burst capture mode
                 trigger_signal_generator()  # Placeholder for external trigger
-                samples_mv = capture_burst(ser)
+                samples_mv = capture_burst(ser, fast_mode=fast_mode)
                 analyze_burst(samples_mv)
                 
-                # Optional: Save to file
-                # with open('burst_data.csv', 'w') as f:
-                #     f.write('Sample,Voltage_mV\n')
-                #     for i, mv in enumerate(samples_mv):
-                #         f.write(f'{i},{mv:.3f}\n')
+                # Save to file for analysis
+                with open('burst_data.csv', 'w') as f:
+                    f.write('Sample,Voltage_mV\n')
+                    for i, mv in enumerate(samples_mv):
+                        f.write(f'{i},{mv:.3f}\n')
                 
             else:
                 # Continuous stream mode

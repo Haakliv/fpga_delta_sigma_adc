@@ -4,9 +4,9 @@ use ieee.numeric_std.all;
 
 entity adc_capture is
     generic(
-        GC_DATA_WIDTH : positive := 16;     -- Sample data width
+        GC_DATA_WIDTH : positive := 16; -- Sample data width
         GC_DEPTH      : positive := 131072; -- Buffer depth (samples)
-        GC_ADDR_WIDTH : positive := 17      -- Address width (log2(GC_DEPTH))
+        GC_ADDR_WIDTH : positive := 17  -- Address width (log2(GC_DEPTH))
     );
     port(
         -- Clock and reset
@@ -18,6 +18,8 @@ entity adc_capture is
         -- Control interface
         start_capture : in  std_logic;  -- Start capture (one-shot)
         start_dump    : in  std_logic;  -- Start UART dump (one-shot)
+        capture_reset : in  std_logic := '0'; -- Reset capture state (mode change)
+        short_dump    : in  std_logic := '0'; -- '1' = dump last 4096 samples only
 
         -- Status outputs
         capturing     : out std_logic;  -- Capture in progress
@@ -49,21 +51,25 @@ architecture rtl of adc_capture is
     -- ========================================================================
     -- Address and control signals
     -- ========================================================================
+    constant C_SHORT_DUMP_COUNT : integer := 4096; -- Number of samples for short dump
+    constant C_SHORT_DUMP_START : integer := GC_DEPTH - C_SHORT_DUMP_COUNT; -- Start address for short dump
+
     signal wr_addr     : unsigned(GC_ADDR_WIDTH - 1 downto 0) := (others => '0');
     signal rd_addr     : unsigned(GC_ADDR_WIDTH - 1 downto 0) := (others => '0');
+    signal rd_end_addr : unsigned(GC_ADDR_WIDTH - 1 downto 0) := to_unsigned(GC_DEPTH - 1, GC_ADDR_WIDTH); -- End address for dump (default full)
     signal s_capturing : std_logic                            := '0';
     signal s_dumping   : std_logic                            := '0';
     signal s_full      : std_logic                            := '0';
     signal s_dump_done : std_logic                            := '0';
 
     -- Read pipeline for block RAM (1-cycle read latency)
-    signal rd_data      : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
-    signal rd_valid     : std_logic                                    := '0';
-    signal rd_consumed  : std_logic                                    := '0';  -- Sample was consumed
-    
+    signal rd_data     : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
+    signal rd_valid    : std_logic                                    := '0';
+    signal rd_consumed : std_logic                                    := '0'; -- Sample was consumed
+
     -- Dump state machine
-    type T_DUMP_STATE is (ST_IDLE, ST_READ_REQ, ST_READ_WAIT, ST_DATA_VALID, ST_DONE);
-    signal dump_state : T_DUMP_STATE := ST_IDLE;
+    type   T_DUMP_STATE is (ST_IDLE, ST_READ_REQ, ST_READ_WAIT, ST_DATA_VALID, ST_DONE);
+    signal dump_state   : T_DUMP_STATE := ST_IDLE;
 
 begin
 
@@ -85,6 +91,13 @@ begin
                 wr_addr     <= (others => '0');
                 s_full      <= '0';
             else
+                -- Mode change reset: clear capture state to prevent stale data
+                if capture_reset = '1' then
+                    s_capturing <= '0';
+                    wr_addr     <= (others => '0');
+                    s_full      <= '0';
+                end if;
+
                 -- Start capture on rising edge of start_capture
                 if start_capture = '1' and s_capturing = '0' and s_dumping = '0' then
                     s_capturing <= '1';
@@ -107,7 +120,7 @@ begin
                         end if;
                     end if;
                 end if;
-                
+
                 -- Clear full flag when dump completes (s_dump_done driven by p_dump)
                 if s_dump_done = '1' then
                     s_full <= '0';
@@ -129,6 +142,7 @@ begin
                 s_dumping   <= '0';
                 s_dump_done <= '0';
                 rd_addr     <= (others => '0');
+                rd_end_addr <= to_unsigned(GC_DEPTH - 1, GC_ADDR_WIDTH); -- Default to full dump
                 rd_valid    <= '0';
                 rd_consumed <= '0';
                 rd_data     <= (others => '0');
@@ -138,51 +152,65 @@ begin
                     s_dump_done <= '0';
                 end if;
 
+                -- Mode change reset: abort any active dump
+                if capture_reset = '1' then
+                    dump_state  <= ST_IDLE;
+                    s_dumping   <= '0';
+                    s_dump_done <= '0';
+                    rd_valid    <= '0';
+                    rd_consumed <= '0';
+                end if;
+
                 case dump_state is
                     when ST_IDLE =>
-                        rd_valid <= '0';
+                        rd_valid    <= '0';
+                        rd_addr     <= (others => '0'); -- Always reset to start
+                        rd_end_addr <= to_unsigned(GC_DEPTH - 1, GC_ADDR_WIDTH); -- Default full
                         -- Start dump on rising edge of start_dump (only when buffer full)
                         if start_dump = '1' and s_full = '1' then
                             dump_state  <= ST_READ_REQ;
                             s_dumping   <= '1';
                             s_dump_done <= '0';
-                            rd_addr     <= (others => '0');
+                            -- Set start address based on short_dump mode (end always GC_DEPTH-1)
+                            if short_dump = '1' then
+                                rd_addr <= to_unsigned(C_SHORT_DUMP_START, GC_ADDR_WIDTH);
+                            end if;
                         end if;
-                    
+
                     when ST_READ_REQ =>
                         -- Issue read request to RAM (address already set)
                         dump_state <= ST_READ_WAIT;
-                    
+
                     when ST_READ_WAIT =>
                         -- RAM read latency cycle - data available next cycle
                         rd_data    <= ram(to_integer(rd_addr));
                         rd_valid   <= '1';
                         dump_state <= ST_DATA_VALID;
-                    
+
                     when ST_DATA_VALID =>
-                        -- Wait for UART to consume data (ready goes low then high)
-                        -- Track when ready goes low (sample was latched)
+                        -- Wait for UART to consume data
+                        -- Clear rd_valid immediately when consumed to prevent re-latching
                         if dump_ready = '0' then
                             rd_consumed <= '1';
+                            rd_valid    <= '0'; -- Clear immediately to prevent UART re-latching
                         end if;
-                        -- Advance only after sample was consumed AND ready is back high
+                        -- Advance to next sample after UART is ready again
                         if rd_consumed = '1' and dump_ready = '1' then
-                            rd_valid    <= '0';
                             rd_consumed <= '0';
-                            -- Check if we've sent all samples
-                            if rd_addr = to_unsigned(GC_DEPTH - 1, GC_ADDR_WIDTH) then
+                            -- Check if we've sent all samples (compare to end address)
+                            if rd_addr = rd_end_addr then
                                 dump_state <= ST_DONE;
                             else
                                 rd_addr    <= rd_addr + 1;
                                 dump_state <= ST_READ_REQ;
                             end if;
                         end if;
-                    
+
                     when ST_DONE =>
                         s_dumping   <= '0';
                         s_dump_done <= '1';
                         dump_state  <= ST_IDLE;
-                    
+
                     when others =>
                         dump_state <= ST_IDLE;
                 end case;

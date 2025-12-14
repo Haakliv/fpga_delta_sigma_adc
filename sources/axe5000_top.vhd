@@ -11,20 +11,20 @@ use ieee.numeric_std.all;
 entity axe5000_top is
   generic(
     -- ADC Decimation: 50MHz / 128 ≈ 390 kS/s for burst capture
-    -- In burst mode, samples stored in RAM at full rate (~390 kS/s)
+    -- In burst mode, samples stored in RAM at full rate (~97.7 kS/s)
     -- During dump, transmitted at UART-limited rate (~1.9 kS/s)
-    -- Stream mode will drop samples at this rate (use burst mode instead)
-    GC_ADC_DECIMATION  : positive := 128;    -- Fast decimation for burst mode (390 kS/s)
-    GC_UART_BINARY     : boolean  := false;  -- false=ASCII hex (human readable)
+    -- Stream mode not recommended at this rate (UART will drop samples)
+    GC_ADC_DECIMATION  : positive := 512; -- Decimation for burst mode (97.7 kS/s, ~1mV noise)
+    GC_UART_BINARY     : boolean  := false; -- false=ASCII hex (human readable)
     GC_CAPTURE_DEPTH   : positive := 131072; -- Burst capture buffer depth (128K samples)
-    GC_CAPTURE_ENABLED : boolean  := true    -- Enable burst capture mode
+    GC_CAPTURE_ENABLED : boolean  := true -- Enable burst capture mode
   );
   port(
     -- Clock and Reset
     CLK_25M_C    : in  std_logic;
     -- UART
     UART_TX      : out std_logic;
-    UART_RX      : in  std_logic := '1';    -- UART receive for commands
+    UART_RX      : in  std_logic := '1'; -- UART receive for commands
     -- Differential analog input (Quartus auto-assigns N-pin for differential)
     ANALOG_IN    : in  std_logic;       -- LVDS differential input (P-pin, N-pin auto-assigned)
     -- Feedback output
@@ -44,7 +44,7 @@ end entity;
 architecture rtl of axe5000_top is
 
   constant C_ADC_DATA_WIDTH : positive := 16;
-  constant C_CAPTURE_ADDR_W : positive := 17;  -- log2(131072)
+  constant C_CAPTURE_ADDR_W : positive := 17; -- log2(131072)
 
   signal sysclk_pd     : std_logic;     -- 100 MHz system clock from PLL
   signal clk_tdc_400m  : std_logic;     -- 400 MHz TDC clock from PLL
@@ -54,6 +54,7 @@ architecture rtl of axe5000_top is
 
   signal adc_sample_data  : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
   signal adc_sample_valid : std_logic;
+  signal adc_ready        : std_logic;  -- ADC is in closed-loop and producing valid samples
 
   signal uart_tx_data  : std_logic_vector(7 downto 0);
   signal uart_tx_valid : std_logic;
@@ -64,33 +65,42 @@ architecture rtl of axe5000_top is
   signal w_dac_bit        : std_logic;  -- DAC bit output to FEEDBACK_OUT
 
   -- Capture module signals
-  signal capture_start    : std_logic := '0';
-  signal capture_dump     : std_logic := '0';
-  signal capture_active   : std_logic;
-  signal capture_done     : std_logic;
-  signal dump_active      : std_logic;
-  signal dump_data        : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
-  signal dump_valid       : std_logic;
-  signal dump_ready       : std_logic;
-  
+  signal capture_start  : std_logic := '0';
+  signal capture_dump   : std_logic := '0';
+  signal capture_active : std_logic;
+  signal capture_done   : std_logic;
+  signal dump_active    : std_logic;
+  signal dump_data      : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
+  signal dump_valid     : std_logic;
+  signal dump_ready     : std_logic;
+
   -- UART mux signals (live vs dump mode)
-  signal streamer_data    : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
-  signal streamer_valid   : std_logic;
-  signal streamer_ready   : std_logic;
-  
+  signal streamer_data  : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
+  signal streamer_valid : std_logic;
+  signal streamer_ready : std_logic;
+
   -- Runtime control
-  signal disable_tdc_contrib : std_logic := '0';  -- 0=TDC enabled, 1=TDC disabled (CIC-only)
-  signal disable_eq_filter   : std_logic := '0';  -- 0=EQ enabled, 1=EQ bypassed
-  signal disable_lp_filter   : std_logic := '0';  -- 0=LP enabled, 1=LP bypassed
-  
+  signal disable_tdc_contrib : std_logic            := '0'; -- 0=TDC enabled, 1=TDC disabled (CIC-only)
+  signal negate_tdc_contrib  : std_logic            := '0'; -- 0=normal TDC sign, 1=inverted TDC sign
+  signal tdc_scale_shift     : unsigned(2 downto 0) := "000"; -- TDC gain shift: 000=1x to 111=128x
+  signal disable_eq_filter   : std_logic            := '0'; -- 0=EQ enabled, 1=EQ bypassed
+  signal disable_lp_filter   : std_logic            := '0'; -- 0=LP enabled, 1=LP bypassed
+  signal short_dump_mode     : std_logic            := '0'; -- 0=full buffer (131K), 1=short (4K samples)
+  signal level_trigger_mode  : std_logic            := '0'; -- 0=edge trigger, 1=level trigger
+
   -- Mode control: Burst vs Stream
-  signal burst_mode          : std_logic := '1';  -- 1=burst mode (default), 0=stream mode
-  
+  signal burst_mode      : std_logic := '1'; -- 1=burst mode (default), 0=stream mode
+  signal burst_mode_prev : std_logic := '1'; -- For edge detection
+  signal mode_changed    : std_logic := '0'; -- Pulse when mode changes
+
   -- UART RX command decoder
-  signal uart_rx_data     : std_logic_vector(7 downto 0);
-  signal uart_rx_valid    : std_logic;
-  signal trigger_sync     : std_logic_vector(2 downto 0) := (others => '0');
-  signal trigger_edge     : std_logic;
+  signal uart_rx_data      : std_logic_vector(7 downto 0);
+  signal uart_rx_valid     : std_logic;
+  signal trigger_sync      : std_logic_vector(3 downto 0) := (others => '0'); -- 4-stage for async input
+  signal trigger_edge      : std_logic;
+  signal trigger_pending   : std_logic                    := '0'; -- Sticky latch for missed triggers
+  signal capture_done_prev : std_logic                    := '0'; -- For edge detection
+  signal capture_done_edge : std_logic                    := '0'; -- Rising edge of capture_done
 
   component adc_system is               -- @suppress
     port(
@@ -129,7 +139,7 @@ begin
 
   -- Debug and DAC outputs
   TEST_PIN     <= adc_sample_valid;     -- Sample valid pulse
-  LED1         <= capture_active or dump_active; -- LED shows capture/dump activity
+  LED1         <= trigger_pending;      -- LED shows trigger latch state (goes high when trigger detected, clears when capture starts)
   FEEDBACK_OUT <= w_dac_bit;            -- DAC output with external RC filter
   VSEL_1V3     <= '1';                  -- Select 1.3V VADJ for CRUVI
 
@@ -171,38 +181,42 @@ begin
       GC_TDC_OUTPUT => 16,
       GC_SIM        => false,
       GC_FAST_SIM   => false,
-      GC_OPEN_LOOP  => false  -- Normal closed-loop operation
+      GC_OPEN_LOOP  => false            -- Normal closed-loop operation
     )
     port map(
-      clk_sys            => sysclk_pd,
-      clk_tdc            => clk_tdc_400m,
-      reset              => rst,
+      clk_sys             => sysclk_pd,
+      clk_tdc             => clk_tdc_400m,
+      reset               => rst,
       -- Reference clock
-      ref_clock          => clk_ref_2m,
+      ref_clock           => clk_ref_2m,
       -- Comparator input from differential GPIO
-      comparator_in      => s_comparator_out(0),
+      comparator_in       => s_comparator_out(0),
       -- DAC output to external pin (1k + 1nF RC filter, shorted to ANALOG_IN_N)
-      dac_out_bit        => w_dac_bit,
+      dac_out_bit         => w_dac_bit,
       -- Optional trigger input (always enabled for ADC sampling)
-      trigger_enable     => '1',
+      trigger_enable      => '1',
       -- Open-loop test mode (not used in production)
-      open_loop_dac_duty => '0',
+      open_loop_dac_duty  => '0',
       -- Sample output
-      sample_data        => adc_sample_data,
-      sample_valid       => adc_sample_valid,
+      sample_data         => adc_sample_data,
+      sample_valid        => adc_sample_valid,
       -- Debug outputs (not monitored in production)
-      debug_tdc_out      => open,
-      debug_tdc_valid    => open,
+      debug_tdc_out       => open,
+      debug_tdc_valid     => open,
       -- TDC Monitor outputs (not used)
-      tdc_monitor_code   => open,
-      tdc_monitor_center => open,
-      tdc_monitor_diff   => open,
-      tdc_monitor_dac    => open,
-      tdc_monitor_valid  => open,
+      tdc_monitor_code    => open,
+      tdc_monitor_center  => open,
+      tdc_monitor_diff    => open,
+      tdc_monitor_dac     => open,
+      tdc_monitor_valid   => open,
       -- Runtime control
       disable_tdc_contrib => disable_tdc_contrib,
+      negate_tdc_contrib  => negate_tdc_contrib,
+      tdc_scale_shift     => tdc_scale_shift,
       disable_eq_filter   => disable_eq_filter,
-      disable_lp_filter   => disable_lp_filter
+      disable_lp_filter   => disable_lp_filter,
+      -- Status
+      adc_ready           => adc_ready
     );
 
   -- ========================================================================
@@ -212,13 +226,38 @@ begin
   begin
     if rising_edge(sysclk_pd) then
       if rst = '1' then
-        trigger_sync <= (others => '0');
+        trigger_sync    <= (others => '0');
+        trigger_pending <= '0';
+        burst_mode_prev <= '1';
+        mode_changed    <= '0';
       else
-        trigger_sync <= trigger_sync(1 downto 0) & TRIGGER_IN;
+        -- 4-stage synchronizer for async external trigger
+        trigger_sync <= trigger_sync(2 downto 0) & TRIGGER_IN;
+
+        -- Detect mode changes (for state reset)
+        burst_mode_prev <= burst_mode;
+        mode_changed    <= burst_mode xor burst_mode_prev;
+
+        -- Sticky trigger latch: set on edge, clear when capture starts or mode changes
+        -- Only latch trigger edges when in burst mode
+        if mode_changed = '1' then
+          -- Clear pending trigger when switching modes to avoid stale triggers
+          trigger_pending <= '0';
+        elsif trigger_edge = '1' and burst_mode = '1' then
+          -- Only latch trigger in burst mode
+          trigger_pending <= '1';
+        elsif capture_active = '1' then
+          -- Clear pending once capture is actually running
+          trigger_pending <= '0';
+        end if;
       end if;
     end if;
   end process;
-  trigger_edge <= trigger_sync(1) and not trigger_sync(2);  -- Rising edge detect
+  -- Trigger detection: edge or level mode
+  -- Edge mode: rising edge detect on synchronized signal (use stages 2 and 3 for clean edge)
+  -- Level mode: just use synchronized signal directly
+  trigger_edge <= trigger_sync(3) when level_trigger_mode = '1' else
+                  (trigger_sync(2) and not trigger_sync(3));
 
   -- ========================================================================
   -- UART Command Decoder
@@ -228,6 +267,7 @@ begin
   --   'B' = switch to Burst mode (capture-then-dump)
   --   'S' = switch to Stream mode (continuous output, drops samples if UART busy)
   --   'X' = toggle TDC contribution
+  --   'N' = toggle TDC sign (negate)
   --   'E' = toggle EQ filter
   --   'L' = toggle LP filter
   -- ========================================================================
@@ -238,42 +278,77 @@ begin
         capture_start       <= '0';
         capture_dump        <= '0';
         disable_tdc_contrib <= '0';
+        negate_tdc_contrib  <= '0';
+        tdc_scale_shift     <= "000";   -- Default: 1x TDC gain
         disable_eq_filter   <= '0';
         disable_lp_filter   <= '0';
-        burst_mode          <= '1';      -- Default: burst mode
+        short_dump_mode     <= '0';     -- Default: full buffer dump
+        level_trigger_mode  <= '0';     -- Default: edge trigger
+        burst_mode          <= '1';     -- Default: burst mode
+        capture_done_prev   <= '0';
+        capture_done_edge   <= '0';
       else
-        capture_start <= '0';  -- Default: single-cycle pulses
+        capture_start <= '0';           -- Default: single-cycle pulses
         capture_dump  <= '0';
-        
-        -- External trigger starts capture
-        if trigger_edge = '1' then
+
+        -- External trigger starts capture (use pending latch for reliability)
+        -- Start capture when: in burst mode AND pending trigger AND not currently capturing/dumping
+        if burst_mode = '1' and (trigger_edge = '1' or trigger_pending = '1') and capture_active = '0' and dump_active = '0' then
           capture_start <= '1';
         end if;
-        
+
         -- UART commands
         if uart_rx_valid = '1' then
           case uart_rx_data is
-            when x"43" | x"63" =>  -- 'C' or 'c' = Capture
+            when x"43" | x"63" =>       -- 'C' or 'c' = Capture
               capture_start <= '1';
-            when x"44" | x"64" =>  -- 'D' or 'd' = Dump
+            when x"44" | x"64" =>       -- 'D' or 'd' = Dump
               capture_dump <= '1';
-            when x"42" | x"62" =>  -- 'B' or 'b' = Burst mode
+            when x"42" | x"62" =>       -- 'B' or 'b' = Burst mode
               burst_mode <= '1';
-            when x"53" | x"73" =>  -- 'S' or 's' = Stream mode
+            when x"53" | x"73" =>       -- 'S' or 's' = Stream mode
               burst_mode <= '0';
-            when x"58" | x"78" =>  -- 'X' or 'x' = Toggle TDC contribution
+            when x"58" | x"78" =>       -- 'X' or 'x' = Toggle TDC contribution
               disable_tdc_contrib <= not disable_tdc_contrib;
-            when x"45" | x"65" =>  -- 'E' or 'e' = Toggle EQ filter
+            when x"4E" | x"6E" =>       -- 'N' or 'n' = Toggle TDC sign (negate)
+              negate_tdc_contrib <= not negate_tdc_contrib;
+            when x"45" | x"65" =>       -- 'E' or 'e' = Toggle EQ filter
               disable_eq_filter <= not disable_eq_filter;
-            when x"4C" | x"6C" =>  -- 'L' or 'l' = Toggle LP filter
+            when x"4C" | x"6C" =>       -- 'L' or 'l' = Toggle LP filter
               disable_lp_filter <= not disable_lp_filter;
+            when x"30" =>               -- '0' = Disable fast dump (full 131K)
+              short_dump_mode <= '0';
+            when x"31" =>               -- '1' = Enable fast dump (4K only)
+              short_dump_mode <= '1';
+            when x"32" =>               -- '2' = Set TDC gain to 1x
+              tdc_scale_shift <= "000";
+            when x"33" =>               -- '3' = Set TDC gain to 2x
+              tdc_scale_shift <= "001";
+            when x"34" =>               -- '4' = Set TDC gain to 4x
+              tdc_scale_shift <= "010";
+            when x"35" =>               -- '5' = Set TDC gain to 8x
+              tdc_scale_shift <= "011";
+            when x"36" =>               -- '6' = Set TDC gain to 16x
+              tdc_scale_shift <= "100";
+            when x"37" =>               -- '7' = Set TDC gain to 32x
+              tdc_scale_shift <= "101";
+            when x"38" =>               -- '8' = Set TDC gain to 64x
+              tdc_scale_shift <= "110";
+            when x"39" =>               -- '9' = Set TDC gain to 128x
+              tdc_scale_shift <= "111";
+            when x"54" | x"74" =>       -- 'T' or 't' = Toggle Trigger mode (edge vs level)
+              level_trigger_mode <= not level_trigger_mode;
             when others =>
               null;
           end case;
         end if;
-        
+
         -- Auto-dump after capture complete (burst mode only)
-        if burst_mode = '1' and capture_done = '1' and dump_active = '0' then
+        -- Use edge detection to only trigger once per capture
+        capture_done_prev <= capture_done;
+        capture_done_edge <= capture_done and not capture_done_prev;
+
+        if burst_mode = '1' and capture_done_edge = '1' and dump_active = '0' then
           capture_dump <= '1';
         end if;
       end if;
@@ -297,23 +372,25 @@ begin
         sample_valid  => adc_sample_valid,
         start_capture => capture_start,
         start_dump    => capture_dump,
+        capture_reset => mode_changed,  -- Clear stale state on mode switch
+        short_dump    => short_dump_mode, -- '1' = dump last 4K only
         capturing     => capture_active,
         capture_done  => capture_done,
         dumping       => dump_active,
-        dump_done     => open,  -- Status signal available but not currently monitored
+        dump_done     => open,          -- Status signal available but not currently monitored
         sample_count  => open,
         dump_data     => dump_data,
         dump_valid    => dump_valid,
         dump_ready    => dump_ready
       );
-    
+
     -- Mux: During dump, send captured data
     -- In burst mode: nothing sent until dump command
     -- In stream mode: send live samples continuously
-    streamer_data  <= dump_data  when dump_active = '1' else adc_sample_data;
+    streamer_data  <= dump_data when dump_active = '1' else adc_sample_data;
     streamer_valid <= dump_valid when dump_active = '1' else
                       adc_sample_valid when burst_mode = '0' else
-                      '0';  -- Burst mode: suppress output until dump
+                      '0';              -- Burst mode: suppress output until dump
     dump_ready     <= streamer_ready when dump_active = '1' else '0';
   end generate;
 

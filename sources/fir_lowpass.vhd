@@ -2,18 +2,18 @@
 -- Anti-Aliasing FIR Low-Pass Filter
 -- Final filtering stage after CIC decimation and sinc^3 equalization
 -- 63-tap symmetric linear-phase FIR (Type I)
--- Coefficients: Kaiser window (β=6.98), Fc=700Hz, Fs=1745Hz
+-- Coefficients: Kaiser window (β=6.98), Fc=12.5kHz, Fs=97.656kHz
 -- Q1.15 format (16-bit signed), DC gain = 1.0
--- Passband: DC-700Hz (<0.5dB ripple), Stopband: >872Hz (>70dB atten)
--- Verified: 138dB stopband rejection (far exceeds 70dB requirement)
+-- Passband: DC-12.5kHz, designed for burst mode (50MHz/512 = 97.656kHz)
 --
 -- Architecture:
---   - 4-stage pipeline for timing closure at 100 MHz
+--   - 5-stage pipeline for timing closure at 100 MHz
 --   - Stage 1: Symmetric pre-addition (31 adders)
 --   - Stage 2: Multiplication (32 multipliers: 31 pairs + 1 center)
---   - Stage 3: Balanced binary accumulation tree (log2(32) = 5 levels)
---   - Stage 4: Q1.15 scaling and saturation
--- Total latency: 4 clock cycles
+--   - Stage 3a/3b: Balanced binary accumulation tree (registered levels)
+--   - Stage 4: Final accumulation
+--   - Stage 5: Q1.15 scaling and saturation
+-- Total latency: 5 clock cycles
 -- ************************************************************************
 
 library ieee;
@@ -53,39 +53,40 @@ architecture rtl of fir_lowpass is
   -- Coefficient ROM (Q1.15 format, only first half due to symmetry)
   -- Sum = 32768 for DC gain = 1.0
   type T_COEFF_ARRAY is array (0 to 31) of signed(C_COEF_WIDTH - 1 downto 0);
+  -- Coefficients designed for Fs=390.625kHz (50MHz/128), Fc=50kHz
   constant C_COEFFS : T_COEFF_ARRAY := (
-    0  => to_signed(1, 16),             -- h[0] = h[62]
-    1  => to_signed(1, 16),             -- h[1] = h[61]
-    2  => to_signed(-5, 16),            -- h[2] = h[60]
-    3  => to_signed(11, 16),            -- h[3] = h[59]
-    4  => to_signed(-14, 16),           -- h[4] = h[58]
-    5  => to_signed(10, 16),            -- h[5] = h[57]
-    6  => to_signed(6, 16),             -- h[6] = h[56]
-    7  => to_signed(-31, 16),           -- h[7] = h[55]
-    8  => to_signed(56, 16),            -- h[8] = h[54]
-    9  => to_signed(-65, 16),           -- h[9] = h[53]
-    10 => to_signed(42, 16),            -- h[10] = h[52]
-    11 => to_signed(17, 16),            -- h[11] = h[51]
-    12 => to_signed(-100, 16),          -- h[12] = h[50]
-    13 => to_signed(174, 16),           -- h[13] = h[49]
-    14 => to_signed(-195, 16),          -- h[14] = h[48]
-    15 => to_signed(128, 16),           -- h[15] = h[47]
-    16 => to_signed(34, 16),            -- h[16] = h[46]
-    17 => to_signed(-248, 16),          -- h[17] = h[45]
-    18 => to_signed(433, 16),           -- h[18] = h[44]
-    19 => to_signed(-485, 16),          -- h[19] = h[43]
-    20 => to_signed(326, 16),           -- h[20] = h[42]
-    21 => to_signed(53, 16),            -- h[21] = h[41]
-    22 => to_signed(-561, 16),          -- h[22] = h[40]
-    23 => to_signed(1014, 16),          -- h[23] = h[39]
-    24 => to_signed(-1179, 16),         -- h[24] = h[38]
-    25 => to_signed(850, 16),           -- h[25] = h[37]
-    26 => to_signed(69, 16),            -- h[26] = h[36]
-    27 => to_signed(-1509, 16),         -- h[27] = h[35]
-    28 => to_signed(3230, 16),          -- h[28] = h[34]
-    29 => to_signed(-4870, 16),         -- h[29] = h[33]
-    30 => to_signed(6049, 16),          -- h[30] = h[32]
-    31 => to_signed(26284, 16)          -- h[31] (center tap)
+    0  => to_signed(0, 16),             -- h[0] = h[62]
+    1  => to_signed(-3, 16),            -- h[1] = h[61]
+    2  => to_signed(-7, 16),            -- h[2] = h[60]
+    3  => to_signed(-6, 16),            -- h[3] = h[59]
+    4  => to_signed(4, 16),             -- h[4] = h[58]
+    5  => to_signed(20, 16),            -- h[5] = h[57]
+    6  => to_signed(30, 16),            -- h[6] = h[56]
+    7  => to_signed(19, 16),            -- h[7] = h[55]
+    8  => to_signed(-19, 16),           -- h[8] = h[54]
+    9  => to_signed(-66, 16),           -- h[9] = h[53]
+    10 => to_signed(-85, 16),           -- h[10] = h[52]
+    11 => to_signed(-43, 16),           -- h[11] = h[51]
+    12 => to_signed(60, 16),            -- h[12] = h[50]
+    13 => to_signed(166, 16),           -- h[13] = h[49]
+    14 => to_signed(192, 16),           -- h[14] = h[48]
+    15 => to_signed(77, 16),            -- h[15] = h[47]
+    16 => to_signed(-150, 16),          -- h[16] = h[46]
+    17 => to_signed(-360, 16),          -- h[17] = h[45]
+    18 => to_signed(-380, 16),          -- h[18] = h[44]
+    19 => to_signed(-118, 16),          -- h[19] = h[43]
+    20 => to_signed(341, 16),           -- h[20] = h[42]
+    21 => to_signed(726, 16),           -- h[21] = h[41]
+    22 => to_signed(717, 16),           -- h[22] = h[40]
+    23 => to_signed(157, 16),           -- h[23] = h[39]
+    24 => to_signed(-767, 16),          -- h[24] = h[38]
+    25 => to_signed(-1529, 16),         -- h[25] = h[37]
+    26 => to_signed(-1477, 16),         -- h[26] = h[36]
+    27 => to_signed(-186, 16),          -- h[27] = h[35]
+    28 => to_signed(2247, 16),          -- h[28] = h[34]
+    29 => to_signed(5142, 16),          -- h[29] = h[33]
+    30 => to_signed(7488, 16),          -- h[30] = h[32]
+    31 => to_signed(8388, 16)           -- h[31] (center tap)
   );
 
   -- Pipeline stage 1: Pre-addition (symmetric pairs)

@@ -121,7 +121,7 @@ architecture rtl of cic_sinc3_decimator is
   -- Stage 3: Division by R^3 (multiply only)
   signal scale_pipe3       : signed(C_WIDTH + 64 - 1 downto 0) := (others => '0'); -- Full multiply result
   signal scale_pipe3_valid : std_logic                         := '0';
-  
+
   -- Stage 3.8: After shift/downscale (breaks multiplier timing path)
   signal scale_pipe3_8       : signed(C_WIDTH - 1 downto 0) := (others => '0');
   signal scale_pipe3_8_valid : std_logic                    := '0';
@@ -129,7 +129,7 @@ architecture rtl of cic_sinc3_decimator is
   -- Stage 3.5: Fractional gain for multi-bit mode (multiply by 3, shift by 1)
   signal scale_pipe3_5       : signed(C_WIDTH + 5 - 1 downto 0) := (others => '0'); -- Extra bits for *3
   signal scale_pipe3_5_valid : std_logic                        := '0';
-  
+
   -- Stage 3.75: Extra register to break multiply timing path
   signal scale_pipe3_75       : signed(C_WIDTH + 5 - 1 downto 0) := (others => '0');
   signal scale_pipe3_75_valid : std_logic                        := '0';
@@ -295,23 +295,25 @@ begin
   begin
     if rising_edge(clk) then
       if reset = '1' then
-        scale_pipe1         <= (others => '0');
-        scale_pipe1_valid   <= '0';
-        scale_pipe1_5       <= (others => '0');
-        scale_pipe1_5_valid <= '0';
-        scale_pipe1_5_pos   <= '0';
-        scale_pipe2         <= (others => '0');
-        scale_pipe2_valid   <= '0';
-        scale_pipe3         <= (others => '0');
-        scale_pipe3_valid   <= '0';        scale_pipe3_8       <= (others => '0');
-        scale_pipe3_8_valid <= '0';        scale_pipe3_8       <= (others => '0');
-        scale_pipe3_8_valid <= '0';
-        scale_pipe3_5       <= (others => '0');
-        scale_pipe3_5_valid <= '0';
+        scale_pipe1          <= (others => '0');
+        scale_pipe1_valid    <= '0';
+        scale_pipe1_5        <= (others => '0');
+        scale_pipe1_5_valid  <= '0';
+        scale_pipe1_5_pos    <= '0';
+        scale_pipe2          <= (others => '0');
+        scale_pipe2_valid    <= '0';
+        scale_pipe3          <= (others => '0');
+        scale_pipe3_valid    <= '0';
+        scale_pipe3_8        <= (others => '0');
+        scale_pipe3_8_valid  <= '0';
+        scale_pipe3_8        <= (others => '0');
+        scale_pipe3_8_valid  <= '0';
+        scale_pipe3_5        <= (others => '0');
+        scale_pipe3_5_valid  <= '0';
         scale_pipe3_75       <= (others => '0');
         scale_pipe3_75_valid <= '0';
-        y_out               <= (others => '0');
-        y_valid             <= '0';
+        y_out                <= (others => '0');
+        y_valid              <= '0';
       else
         -- Compute R^3 as 64-bit signed (handles large decimation ratios like 25600)
         -- Perform multiplications with intermediate resizing to avoid 192-bit intermediate
@@ -360,8 +362,9 @@ begin
         -- TIMING FIX: Only do multiply here, shift in next stage
         if scale_pipe2_valid = '1' then
           if C_IS_POW2 then
-            -- For power-of-2, store shift amount in upper bits (will shift in next stage)
-            scale_pipe3 <= resize(shift_left(resize(scale_pipe2, C_WIDTH), 64), scale_pipe3'length);
+            -- For power-of-2, place value in upper bits (will shift down in next stage)
+            -- MUST resize to full width BEFORE shift_left, or upper bits are lost!
+            scale_pipe3 <= shift_left(resize(scale_pipe2, scale_pipe3'length), 64);
           else
             -- Compute reciprocal: (2^62) / R^3
             v_recip     := shift_left(to_signed(1, 64), C_RECIP_SCALE) / v_r_cubed;
@@ -374,7 +377,7 @@ begin
         else
           scale_pipe3_valid <= '0';
         end if;
-        
+
         -- ====== Pipeline Stage 3.8: Shift and downscale ======
         -- Register the multiplier output, then apply shift
         if scale_pipe3_valid = '1' then
@@ -405,7 +408,7 @@ begin
         else
           scale_pipe3_5_valid <= '0';
         end if;
-        
+
         -- ====== Pipeline Stage 3.75: Extra register to break multiply timing ======
         -- Register multiply output before shift/saturate (breaks critical path)
         if scale_pipe3_5_valid = '1' then

@@ -317,7 +317,7 @@ begin
 
       -- Set inhibit on every Start
       if start_pulse = '1' then
-        edge_inhibit         <= to_unsigned(6, edge_inhibit'length); -- Blank for 6 cycles (15ns) to mask DAC glitch
+        edge_inhibit         <= to_unsigned(2, edge_inhibit'length); -- Blank for 2 cycles (5ns) - reduced from 6 (15ns) to avoid masking real edges
         level_at_start_pulse <= analog_sync(2); -- Capture state immediately (before inhibit)
       elsif edge_inhibit > to_unsigned(0, edge_inhibit'length) then
         -- Decrement inhibit counter

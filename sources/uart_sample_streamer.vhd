@@ -74,7 +74,14 @@ architecture rtl of uart_sample_streamer is
 
 begin
 
-    -- Sample capture: latch latest sample; held until taken by UART SM
+    -- Sample capture: latch sample only when ready to accept new one
+    -- In stream mode, we drop samples we can't transmit - that's expected.
+    -- The key is to NOT continuously overwrite the latch, which causes
+    -- the captured sample to correlate with UART timing rather than being random.
+    -- 
+    -- FIX: Only latch new sample when latch is empty (sample_latched = '0')
+    -- This ensures we capture whatever sample arrives when UART becomes ready,
+    -- giving proper random sampling of the input signal.
     p_sample_capture : process(clk)
     begin
         if rising_edge(clk) then
@@ -83,10 +90,11 @@ begin
                 sample_latched <= '0';
             else
                 if sample_take = '1' then
+                    -- Clear latch flag - allows ready to go high for handshake
                     sample_latched <= '0';
-                end if;
-
-                if sample_valid = '1' then
+                elsif sample_valid = '1' and sample_latched = '0' then
+                    -- Only latch new sample when latch is empty
+                    -- This prevents overwriting and creates proper random sampling
                     sample_capture <= sample_data;
                     sample_latched <= '1';
                 end if;
