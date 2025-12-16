@@ -5,8 +5,10 @@
 -- Design specs:
 --   - Compensates sinc^3 droop from CIC decimator
 --   - 31-tap symmetric FIR (linear phase)
---   - Passband: DC to 12.5kHz (where Fs = 97.656kHz = 50MHz/512)
---   - Quantized to 16-bit coefficients for efficient implementation
+--   - Passband: DC to 19.5kHz (80% of Nyquist/2)
+--   - -3dB cutoff: ~21 kHz
+--   - Passband ripple: < 2 dB
+--   - Quantized to 16-bit coefficients (Q1.15 format)
 --
 -- Architecture:
 --   - 4-stage pipeline for timing closure at 100 MHz
@@ -15,7 +17,7 @@
 --   - Stage 3: Balanced binary accumulation tree (log2(16) = 4 levels)
 --   - Stage 4: Q1.15 scaling and saturation
 --
--- For OSR=512, fclk=50MHz: Fs=97.656kHz, passband DC-12.5kHz
+-- For OSR=512, fclk=50MHz: Fs=97.656kHz, Nyquist/2=24.4kHz
 -- Total latency: 4 clock cycles
 -- ************************************************************************
 
@@ -46,32 +48,32 @@ architecture rtl of fir_equalizer is
   constant C_COEF_WIDTH : positive := 16;
 
   -- 31-tap symmetric sinc^3 inverse compensator
-  -- Coefficients designed via firls to flatten CIC's sinc^3 droop
+  -- Coefficients designed via firwin2 to flatten CIC's sinc^3 droop
   -- Quantized to Q1.15 format, normalized to DC gain = 1.0
   -- Symmetric: use only 16 unique values (center tap + 15 pairs)
   type T_COEF_ARRAY is array (0 to 15) of signed(C_COEF_WIDTH - 1 downto 0);
 
   -- Sinc^3 equalizer coefficients (approximate 1/sinc^3(pi*f/Fs) in passband)
-  -- Designed for Fs=97.656kHz, passband DC-12.5kHz with flat response
-  -- Droop at 12.5kHz is only ~0.7dB (vs ~2.5dB at 50kHz for R=128)
+  -- Designed for Fs=97.656kHz, passband DC to 19.5kHz (80% of Nyquist/2)
+  -- -3dB cutoff: ~21 kHz, passband ripple: < 2 dB
   -- Sum of all 31 coefficients = 32768 (DC gain = 1.0 in Q1.15)
   constant C_COEF : T_COEF_ARRAY := (
-    to_signed(106, 16),                 -- h[0] = h[30]
-    to_signed(-140, 16),                -- h[1] = h[29]
-    to_signed(-315, 16),                -- h[2] = h[28]
-    to_signed(-334, 16),                -- h[3] = h[27]
-    to_signed(-44, 16),                 -- h[4] = h[26]
-    to_signed(306, 16),                 -- h[5] = h[25]
-    to_signed(583, 16),                 -- h[6] = h[24]
-    to_signed(376, 16),                 -- h[7] = h[23]
-    to_signed(-114, 16),                -- h[8] = h[22]
-    to_signed(-882, 16),                -- h[9] = h[21]
-    to_signed(-1067, 16),               -- h[10] = h[20]
-    to_signed(-804, 16),                -- h[11] = h[19]
-    to_signed(844, 16),                 -- h[12] = h[18]
-    to_signed(2081, 16),                -- h[13] = h[17]
-    to_signed(7296, 16),                -- h[14] = h[16]
-    to_signed(16984, 16)                -- h[15] (center tap)
+    to_signed(27, 16),                  -- h[0] = h[30]
+    to_signed(12, 16),                  -- h[1] = h[29]
+    to_signed(-49, 16),                 -- h[2] = h[28]
+    to_signed(-73, 16),                 -- h[3] = h[27]
+    to_signed(84, 16),                  -- h[4] = h[26]
+    to_signed(254, 16),                 -- h[5] = h[25]
+    to_signed(-43, 16),                 -- h[6] = h[24]
+    to_signed(-615, 16),                -- h[7] = h[23]
+    to_signed(-270, 16),                -- h[8] = h[22]
+    to_signed(1122, 16),                -- h[9] = h[21]
+    to_signed(1180, 16),                -- h[10] = h[20]
+    to_signed(-1574, 16),               -- h[11] = h[19]
+    to_signed(-3385, 16),               -- h[12] = h[18]
+    to_signed(1238, 16),                -- h[13] = h[17]
+    to_signed(10654, 16),               -- h[14] = h[16]
+    to_signed(15644, 16)                -- h[15] (center tap)
   );
 
   -- Delay line for 31 taps

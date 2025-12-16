@@ -1,10 +1,21 @@
 -- ************************************************************************
--- Anti-Aliasing FIR Low-Pass Filter
+-- Anti-Aliasing FIR Low-Pass Filter (Half-Band)
 -- Final filtering stage after CIC decimation and sinc^3 equalization
 -- 63-tap symmetric linear-phase FIR (Type I)
--- Coefficients: Kaiser window (β=6.98), Fc=12.5kHz, Fs=97.656kHz
+-- 
+-- Half-Band Design (remez equiripple):
+--   - Fs = 97.656 kHz (50MHz/512)
+--   - Fc = 24.414 kHz (Nyquist/2 = Fs/4)
+--   - Passband edge: 21.4 kHz
+--   - Stopband edge: 27.4 kHz
+--   - -3dB cutoff: ~23.8 kHz
+--   - -6dB at Nyquist/2 (half-band property)
+--   - Passband ripple: < 0.01 dB
+--
+-- Half-band property: Every odd coefficient (except center) is zero.
+-- This allows efficient implementation with only 17 non-zero multipliers.
+--
 -- Q1.15 format (16-bit signed), DC gain = 1.0
--- Passband: DC-12.5kHz, designed for burst mode (50MHz/512 = 97.656kHz)
 --
 -- Architecture:
 --   - 5-stage pipeline for timing closure at 100 MHz
@@ -52,41 +63,43 @@ architecture rtl of fir_lowpass is
 
   -- Coefficient ROM (Q1.15 format, only first half due to symmetry)
   -- Sum = 32768 for DC gain = 1.0
+  -- Half-band: odd coefficients (except center) are zero
   type T_COEFF_ARRAY is array (0 to 31) of signed(C_COEF_WIDTH - 1 downto 0);
-  -- Coefficients designed for Fs=390.625kHz (50MHz/128), Fc=50kHz
+  -- Half-band lowpass: Fs=97.656kHz, Fc=24.414kHz (Nyquist/2)
+  -- -3dB at 23.8kHz, -6dB at Nyquist/2, passband ripple < 0.01dB
   constant C_COEFFS : T_COEFF_ARRAY := (
-    0  => to_signed(0, 16),             -- h[0] = h[62]
-    1  => to_signed(-3, 16),            -- h[1] = h[61]
-    2  => to_signed(-7, 16),            -- h[2] = h[60]
-    3  => to_signed(-6, 16),            -- h[3] = h[59]
-    4  => to_signed(4, 16),             -- h[4] = h[58]
-    5  => to_signed(20, 16),            -- h[5] = h[57]
-    6  => to_signed(30, 16),            -- h[6] = h[56]
-    7  => to_signed(19, 16),            -- h[7] = h[55]
-    8  => to_signed(-19, 16),           -- h[8] = h[54]
-    9  => to_signed(-66, 16),           -- h[9] = h[53]
-    10 => to_signed(-85, 16),           -- h[10] = h[52]
-    11 => to_signed(-43, 16),           -- h[11] = h[51]
-    12 => to_signed(60, 16),            -- h[12] = h[50]
-    13 => to_signed(166, 16),           -- h[13] = h[49]
-    14 => to_signed(192, 16),           -- h[14] = h[48]
-    15 => to_signed(77, 16),            -- h[15] = h[47]
-    16 => to_signed(-150, 16),          -- h[16] = h[46]
-    17 => to_signed(-360, 16),          -- h[17] = h[45]
-    18 => to_signed(-380, 16),          -- h[18] = h[44]
-    19 => to_signed(-118, 16),          -- h[19] = h[43]
-    20 => to_signed(341, 16),           -- h[20] = h[42]
-    21 => to_signed(726, 16),           -- h[21] = h[41]
-    22 => to_signed(717, 16),           -- h[22] = h[40]
-    23 => to_signed(157, 16),           -- h[23] = h[39]
-    24 => to_signed(-767, 16),          -- h[24] = h[38]
-    25 => to_signed(-1529, 16),         -- h[25] = h[37]
-    26 => to_signed(-1477, 16),         -- h[26] = h[36]
-    27 => to_signed(-186, 16),          -- h[27] = h[35]
-    28 => to_signed(2247, 16),          -- h[28] = h[34]
-    29 => to_signed(5142, 16),          -- h[29] = h[33]
-    30 => to_signed(7488, 16),          -- h[30] = h[32]
-    31 => to_signed(8388, 16)           -- h[31] (center tap)
+    0  => to_signed(-13, 16),           -- h[0] = h[62]
+    1  => to_signed(0, 16),             -- h[1] = h[61] (half-band zero)
+    2  => to_signed(21, 16),            -- h[2] = h[60]
+    3  => to_signed(0, 16),             -- h[3] = h[59] (half-band zero)
+    4  => to_signed(-38, 16),           -- h[4] = h[58]
+    5  => to_signed(0, 16),             -- h[5] = h[57] (half-band zero)
+    6  => to_signed(61, 16),            -- h[6] = h[56]
+    7  => to_signed(0, 16),             -- h[7] = h[55] (half-band zero)
+    8  => to_signed(-94, 16),           -- h[8] = h[54]
+    9  => to_signed(0, 16),             -- h[9] = h[53] (half-band zero)
+    10 => to_signed(138, 16),           -- h[10] = h[52]
+    11 => to_signed(0, 16),             -- h[11] = h[51] (half-band zero)
+    12 => to_signed(-197, 16),          -- h[12] = h[50]
+    13 => to_signed(0, 16),             -- h[13] = h[49] (half-band zero)
+    14 => to_signed(274, 16),           -- h[14] = h[48]
+    15 => to_signed(0, 16),             -- h[15] = h[47] (half-band zero)
+    16 => to_signed(-375, 16),          -- h[16] = h[46]
+    17 => to_signed(0, 16),             -- h[17] = h[45] (half-band zero)
+    18 => to_signed(508, 16),           -- h[18] = h[44]
+    19 => to_signed(0, 16),             -- h[19] = h[43] (half-band zero)
+    20 => to_signed(-686, 16),          -- h[20] = h[42]
+    21 => to_signed(0, 16),             -- h[21] = h[41] (half-band zero)
+    22 => to_signed(934, 16),           -- h[22] = h[40]
+    23 => to_signed(0, 16),             -- h[23] = h[39] (half-band zero)
+    24 => to_signed(-1309, 16),         -- h[24] = h[38]
+    25 => to_signed(0, 16),             -- h[25] = h[37] (half-band zero)
+    26 => to_signed(1953, 16),          -- h[26] = h[36]
+    27 => to_signed(0, 16),             -- h[27] = h[35] (half-band zero)
+    28 => to_signed(-3396, 16),         -- h[28] = h[34]
+    29 => to_signed(0, 16),             -- h[29] = h[33] (half-band zero)
+    30 => to_signed(10403, 16),         -- h[30] = h[32]
+    31 => to_signed(16400, 16)          -- h[31] (center tap)
   );
 
   -- Pipeline stage 1: Pre-addition (symmetric pairs)

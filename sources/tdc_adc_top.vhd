@@ -571,6 +571,7 @@ begin
     variable v_sample_count  : integer range 0 to 100000             := 0;
     variable v_ref_prev      : std_logic                             := '0';
     variable v_start_pulse   : std_logic                             := '0';
+    variable v_dac_for_contrib : std_logic                           := '0'; -- DAC value to use for THIS sample's contribution
     -- C_DAC_AMPLITUDE scaled so that CIC 3/2 gain maps exactly to full Q15 range
     -- With 3/2 gain: ±21845 × 1.5 = ±32767.5 (full Q15 scale)
     -- This is the mathematically exact value for unity gain through the system
@@ -582,7 +583,7 @@ begin
       if reset_tdc = '1' then
         tdc_out_hold        <= (others => '0');
         dac_at_sample       <= '0';
-        dac_at_sample_prev  <= '0';
+        dac_at_sample_prev  <= '0';  -- Unused but kept for compatibility
         tdc_toggle          <= '0';
         cic_input_tdc       <= (others => '0');
         cic_input_valid     <= '0';
@@ -595,6 +596,7 @@ begin
         combine_valid_pipe2 <= '0';
         v_ref_prev          := '0';
         v_sample_count      := 0;
+        v_dac_for_contrib   := '0';
       else
         -- ===================================================================
         -- STAGE 1: Select TDC source and register (minimize mux-to-register path)
@@ -636,14 +638,16 @@ begin
           -- Register TDC center for next stage (breaks timing path)
           tdc_center_pipe <= tdc_center_tdc;
 
-          -- Capture DAC state FIRST (for next cycle's contribution calculation)
-          -- dac_at_sample holds the DAC value that was active during THIS TDC measurement
-          dac_at_sample      <= dac_out_ff;
-          dac_at_sample_prev <= dac_at_sample;
+          -- Capture DAC state for this sample's contribution
+          -- CRITICAL: Use VARIABLE for immediate value in same clock cycle
+          -- The TDC measurement happening NOW corresponds to the DAC bit that was
+          -- set LAST cycle (dac_at_sample holds the previous DAC value)
+          -- We need to use the DAC value that was active when THIS TDC was measured
+          v_dac_for_contrib := dac_at_sample;  -- Use previous cycle's DAC (was active during TDC measurement)
+          dac_at_sample     <= dac_out_ff;     -- Update for next cycle
 
-          -- Register DAC contribution using PREVIOUS dac_at_sample (correct latency alignment)
-          -- The TDC result we're processing was measured when dac_at_sample was active
-          if dac_at_sample = '1' then
+          -- Compute DAC contribution using variable (immediate value, no pipeline delay)
+          if v_dac_for_contrib = '1' then
             dac_contrib_pipe <= C_DAC_AMPLITUDE;
           else
             dac_contrib_pipe <= -C_DAC_AMPLITUDE;

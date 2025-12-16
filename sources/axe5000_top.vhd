@@ -79,6 +79,27 @@ architecture rtl of axe5000_top is
   signal streamer_valid : std_logic;
   signal streamer_ready : std_logic;
 
+  -- Burst done extra newline signals
+  signal dump_done        : std_logic;
+  signal send_extra_lf    : std_logic := '0';
+  signal extra_lf_state   : unsigned(1 downto 0) := "00"; -- 0=idle, 1=send LF, 2=wait
+  
+  -- UART output mux (streamer vs extra LF)
+  signal streamer_tx_data  : std_logic_vector(7 downto 0);
+  signal streamer_tx_valid : std_logic;
+  signal streamer_tx_ready : std_logic;
+
+  -- TDC Monitor signals
+  signal tdc_monitor_code   : signed(15 downto 0);
+  signal tdc_monitor_center : signed(15 downto 0);
+  signal tdc_monitor_diff   : signed(15 downto 0);
+  signal tdc_monitor_dac    : std_logic;
+  signal tdc_monitor_valid  : std_logic;
+  signal tdc_monitor_enable : std_logic := '0'; -- Enable TDC monitor mode (toggled via 'M' command)
+  signal tdc_mon_tx_data    : std_logic_vector(7 downto 0);
+  signal tdc_mon_tx_valid   : std_logic;
+  signal tdc_mon_tx_ready   : std_logic;
+
   -- Runtime control
   signal disable_tdc_contrib : std_logic            := '0'; -- 0=TDC enabled, 1=TDC disabled (CIC-only)
   signal negate_tdc_contrib  : std_logic            := '0'; -- 0=normal TDC sign, 1=inverted TDC sign
@@ -203,12 +224,12 @@ begin
       -- Debug outputs (not monitored in production)
       debug_tdc_out       => open,
       debug_tdc_valid     => open,
-      -- TDC Monitor outputs (not used)
-      tdc_monitor_code    => open,
-      tdc_monitor_center  => open,
-      tdc_monitor_diff    => open,
-      tdc_monitor_dac     => open,
-      tdc_monitor_valid   => open,
+      -- TDC Monitor outputs (for TDC sanity check/debug)
+      tdc_monitor_code    => tdc_monitor_code,
+      tdc_monitor_center  => tdc_monitor_center,
+      tdc_monitor_diff    => tdc_monitor_diff,
+      tdc_monitor_dac     => tdc_monitor_dac,
+      tdc_monitor_valid   => tdc_monitor_valid,
       -- Runtime control
       disable_tdc_contrib => disable_tdc_contrib,
       negate_tdc_contrib  => negate_tdc_contrib,
@@ -284,6 +305,7 @@ begin
         disable_lp_filter   <= '0';
         short_dump_mode     <= '0';     -- Default: full buffer dump
         level_trigger_mode  <= '0';     -- Default: edge trigger
+        tdc_monitor_enable  <= '0';     -- Default: TDC monitor disabled
         burst_mode          <= '1';     -- Default: burst mode
         capture_done_prev   <= '0';
         capture_done_edge   <= '0';
@@ -338,6 +360,8 @@ begin
               tdc_scale_shift <= "111";
             when x"54" | x"74" =>       -- 'T' or 't' = Toggle Trigger mode (edge vs level)
               level_trigger_mode <= not level_trigger_mode;
+            when x"4D" | x"6D" =>       -- 'M' or 'm' = Toggle TDC Monitor mode
+              tdc_monitor_enable <= not tdc_monitor_enable;
             when others =>
               null;
           end case;
@@ -377,7 +401,7 @@ begin
         capturing     => capture_active,
         capture_done  => capture_done,
         dumping       => dump_active,
-        dump_done     => open,          -- Status signal available but not currently monitored
+        dump_done     => dump_done,     -- Used to send extra newline when dump completes
         sample_count  => open,
         dump_data     => dump_data,
         dump_valid    => dump_valid,
@@ -394,6 +418,71 @@ begin
     dump_ready     <= streamer_ready when dump_active = '1' else '0';
   end generate;
 
+  -- ========================================================================
+  -- TDC Monitor UART Streamer
+  -- When tdc_monitor_enable is active, streams TDC diagnostic packets
+  -- ========================================================================
+  i_tdc_monitor_streamer : entity work.tdc_monitor_uart_streamer
+    generic map(
+      GC_TDC_WIDTH  => 16,
+      GC_ADC_WIDTH  => C_ADC_DATA_WIDTH,
+      GC_DECIMATION => 256  -- ~380 packets/s at 97kHz sample rate
+    )
+    port map(
+      clk                => sysclk_pd,
+      reset              => rst,
+      tdc_monitor_code   => tdc_monitor_code,
+      tdc_monitor_center => tdc_monitor_center,
+      tdc_monitor_diff   => tdc_monitor_diff,
+      tdc_monitor_dac    => tdc_monitor_dac,
+      tdc_monitor_valid  => tdc_monitor_valid and tdc_monitor_enable,
+      adc_data_out       => signed(adc_sample_data),
+      uart_tx_data       => tdc_mon_tx_data,
+      uart_tx_valid      => tdc_mon_tx_valid,
+      uart_tx_ready      => tdc_mon_tx_ready
+    );
+  
+  -- TDC monitor ready: only when enabled and UART ready
+  tdc_mon_tx_ready <= uart_tx_ready when tdc_monitor_enable = '1' else '0';
+
+  -- ========================================================================
+  -- Extra Newline After Burst Dump
+  -- When dump completes, send an extra LF to mark end of burst
+  -- This helps Python scripts detect burst completion reliably
+  -- ========================================================================
+  p_extra_newline : process(sysclk_pd)
+  begin
+    if rising_edge(sysclk_pd) then
+      if rst = '1' then
+        send_extra_lf  <= '0';
+        extra_lf_state <= "00";
+      else
+        send_extra_lf <= '0';  -- Default: single cycle pulse
+        
+        case extra_lf_state is
+          when "00" =>  -- Idle: wait for dump_done
+            if dump_done = '1' then
+              extra_lf_state <= "01";
+            end if;
+            
+          when "01" =>  -- Send LF: wait for UART ready
+            if uart_tx_ready = '1' then
+              send_extra_lf  <= '1';
+              extra_lf_state <= "10";
+            end if;
+            
+          when "10" =>  -- Wait for UART to accept LF
+            if uart_tx_ready = '1' then
+              extra_lf_state <= "00";
+            end if;
+            
+          when others =>
+            extra_lf_state <= "00";
+        end case;
+      end if;
+    end if;
+  end process;
+
   g_no_capture : if not GC_CAPTURE_ENABLED generate
     -- No capture module - direct connection
     streamer_data  <= adc_sample_data;
@@ -401,6 +490,7 @@ begin
     capture_active <= '0';
     capture_done   <= '0';
     dump_active    <= '0';
+    dump_done      <= '0';
   end generate;
 
   -- UART streamer for ADC samples (live or dump mode)
@@ -414,10 +504,22 @@ begin
       rst           => rst,
       sample_data   => streamer_data,
       sample_valid  => streamer_valid,
-      uart_tx_data  => uart_tx_data,
-      uart_tx_valid => uart_tx_valid,
-      uart_tx_ready => uart_tx_ready,
+      uart_tx_data  => streamer_tx_data,
+      uart_tx_valid => streamer_tx_valid,
+      uart_tx_ready => streamer_tx_ready,
       ready         => streamer_ready
     );
+
+  -- ========================================================================
+  -- UART Output Mux: Streamer vs TDC Monitor vs Extra LF
+  -- Priority: Extra LF > TDC Monitor > Sample Streamer
+  -- ========================================================================
+  uart_tx_data  <= x"0A" when send_extra_lf = '1' else
+                   tdc_mon_tx_data when tdc_monitor_enable = '1' else
+                   streamer_tx_data;
+  uart_tx_valid <= send_extra_lf or 
+                   (tdc_mon_tx_valid and tdc_monitor_enable) or 
+                   (streamer_tx_valid and not tdc_monitor_enable);
+  streamer_tx_ready <= uart_tx_ready when (send_extra_lf = '0' and tdc_monitor_enable = '0') else '0';
 
 end architecture rtl;
