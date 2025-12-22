@@ -1,7 +1,3 @@
--- ************************************************************************
--- Testbench for FIR Equalizer with Decimation-by-2 (simple averaging)
--- ************************************************************************
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -18,14 +14,12 @@ entity fir_equalizer_tb is
 end entity;
 
 architecture behavioral of fir_equalizer_tb is
-  -- TB constants
   constant C_CLK_PERIOD   : time     := 10 ns;
   constant C_INPUT_WIDTH  : positive := 16;
   constant C_OUTPUT_WIDTH : positive := 16;
 
-  -- TB signals
   signal clk       : std_logic                                    := '0';
-  signal reset     : std_logic                                    := '1'; -- Changed to std_logic
+  signal reset     : std_logic                                    := '1';
   signal data_in   : std_logic_vector(C_INPUT_WIDTH - 1 downto 0) := (others => '0');
   signal valid_in  : std_logic                                    := '0';
   signal data_out  : std_logic_vector(C_OUTPUT_WIDTH - 1 downto 0);
@@ -35,7 +29,6 @@ architecture behavioral of fir_equalizer_tb is
   signal output_sample_count : integer := 0;
   signal sim_finished        : boolean := false;
 begin
-  -- DUT (entity instantiation)
   i_dut : entity work.fir_equalizer
     generic map(
       GC_INPUT_WIDTH  => C_INPUT_WIDTH,
@@ -50,7 +43,6 @@ begin
       valid_out => valid_out
     );
 
-  -- Clock
   p_clk : process
   begin
     while not sim_finished loop
@@ -62,7 +54,14 @@ begin
     wait;
   end process;
 
-  -- Test runner
+  p_reset_gen : process
+  begin
+    reset <= '1';
+    wait for C_CLK_PERIOD * 10;
+    reset <= '0';
+    wait;
+  end process;
+
   p_main : process
   begin
     test_runner_setup(runner, runner_cfg);
@@ -80,17 +79,7 @@ begin
     wait;
   end process;
 
-  -- Reset
   p_reset : process
-  begin
-    reset <= '1';
-    wait for C_CLK_PERIOD * 5;
-    reset <= '0';
-    wait;
-  end process;
-
-  -- Stimulus (no VUnit control here; just drive samples)
-  p_stimulus : process
     variable v_phase, v_phase_inc, v_amp : real;
     variable v_val_r                     : real;
     variable v_val_i                     : integer;

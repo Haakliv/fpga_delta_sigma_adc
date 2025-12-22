@@ -1,8 +1,3 @@
--- ************************************************************************
--- Testbench for FIR Low-Pass Filter
--- Tests final filtering stage
--- ************************************************************************
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -23,29 +18,12 @@ end entity;
 
 architecture behavioral of fir_lowpass_tb is
 
-  -- component fir_lowpass is
-  --   generic(
-  --     INPUT_WIDTH  : positive := 16;
-  --     OUTPUT_WIDTH : positive := 16
-  --   );
-  --   port(
-  --     clk       : in  std_logic;
-  --     reset     : in  std_logic;
-  --     data_in   : in  std_logic_vector(INPUT_WIDTH - 1 downto 0);
-  --     valid_in  : in  std_logic;
-  --     data_out  : out std_logic_vector(OUTPUT_WIDTH - 1 downto 0);
-  --     valid_out : out std_logic
-  --   );
-  -- end component;
-
-  -- Constants
   constant C_CLK_PERIOD   : time     := 10 ns;
   constant C_INPUT_WIDTH  : positive := 16;
   constant C_OUTPUT_WIDTH : positive := 16;
 
-  -- Signals
   signal clk       : std_logic                                    := '0';
-  signal reset     : std_logic                                    := '1'; -- Changed to std_logic
+  signal reset     : std_logic                                    := '1';
   signal data_in   : std_logic_vector(C_INPUT_WIDTH - 1 downto 0) := (others => '0');
   signal valid_in  : std_logic                                    := '0';
   signal data_out  : std_logic_vector(C_OUTPUT_WIDTH - 1 downto 0);
@@ -56,7 +34,6 @@ architecture behavioral of fir_lowpass_tb is
 
 begin
 
-  -- Device Under Test (entity instantiation)
   i_dut : entity fpga_lib.fir_lowpass
     generic map(
       GC_INPUT_WIDTH  => C_INPUT_WIDTH,
@@ -71,7 +48,6 @@ begin
       valid_out => valid_out
     );
 
-  -- Clock generation
   p_clk : process
   begin
     while not sim_finished loop
@@ -83,7 +59,6 @@ begin
     wait;
   end process;
 
-  -- Test runner process
   p_main : process
   begin
     test_runner_setup(runner, runner_cfg);
@@ -91,8 +66,7 @@ begin
     while test_suite loop
       if run("basic_test") then
         info("Running basic test for fir_lowpass_tb");
-        -- Test completion is handled in test_process
-        wait for C_CLK_PERIOD * 10000;  -- Allow test to complete
+        wait for C_CLK_PERIOD * 10000;
         check(true, "Basic test completed");
       end if;
     end loop;

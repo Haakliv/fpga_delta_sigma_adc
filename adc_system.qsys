@@ -242,6 +242,32 @@ https://fpgasoftware.intel.com/eula.-->
             &lt;/value&gt;
         &lt;/entry&gt;
         &lt;entry&gt;
+            &lt;key&gt;iopll_outclk_dsm&lt;/key&gt;
+            &lt;value&gt;
+                &lt;connectionPointName&gt;iopll_outclk_dsm&lt;/connectionPointName&gt;
+                &lt;suppliedSystemInfos/&gt;
+                &lt;consumedSystemInfos&gt;
+                    &lt;entry&gt;
+                        &lt;key&gt;CLOCK_RATE&lt;/key&gt;
+                        &lt;value&gt;50000000&lt;/value&gt;
+                    &lt;/entry&gt;
+                &lt;/consumedSystemInfos&gt;
+            &lt;/value&gt;
+        &lt;/entry&gt;
+        &lt;entry&gt;
+            &lt;key&gt;iopll_outclk_tdc&lt;/key&gt;
+            &lt;value&gt;
+                &lt;connectionPointName&gt;iopll_outclk_tdc&lt;/connectionPointName&gt;
+                &lt;suppliedSystemInfos/&gt;
+                &lt;consumedSystemInfos&gt;
+                    &lt;entry&gt;
+                        &lt;key&gt;CLOCK_RATE&lt;/key&gt;
+                        &lt;value&gt;400000000&lt;/value&gt;
+                    &lt;/entry&gt;
+                &lt;/consumedSystemInfos&gt;
+            &lt;/value&gt;
+        &lt;/entry&gt;
+        &lt;entry&gt;
             &lt;key&gt;iopll_tdc_outclk0&lt;/key&gt;
             &lt;value&gt;
                 &lt;connectionPointName&gt;iopll_tdc_outclk0&lt;/connectionPointName&gt;
@@ -4244,8 +4270,8 @@ https://fpgasoftware.intel.com/eula.-->
       <altera:interface_mapping altera:name="gpio_comp_pad_in_b" altera:internal="gpio_comp.pad_in_b" altera:type="conduit" altera:dir="end"></altera:interface_mapping>
       <altera:interface_mapping altera:name="gpio_comp_pad_io" altera:internal="gpio_comp.pad_io"></altera:interface_mapping>
       <altera:interface_mapping altera:name="gpio_comp_pad_io_b" altera:internal="gpio_comp.pad_io_b"></altera:interface_mapping>
-      <altera:interface_mapping altera:name="iopll_outclk_2m" altera:internal="iopll.outclk2" altera:type="clock" altera:dir="start"></altera:interface_mapping>
-      <altera:interface_mapping altera:name="iopll_outclk_400m" altera:internal="iopll.outclk1" altera:type="clock" altera:dir="start"></altera:interface_mapping>
+      <altera:interface_mapping altera:name="iopll_outclk_dsm" altera:internal="iopll.outclk2" altera:type="clock" altera:dir="start"></altera:interface_mapping>
+      <altera:interface_mapping altera:name="iopll_outclk_tdc" altera:internal="iopll.outclk1" altera:type="clock" altera:dir="start"></altera:interface_mapping>
       <altera:interface_mapping altera:name="iopll_tdc_outclk0" altera:internal="iopll_tdc.outclk0" altera:type="clock" altera:dir="start"></altera:interface_mapping>
       <altera:interface_mapping altera:name="reset_n" altera:internal="reset_bridge.in_reset" altera:type="reset" altera:dir="end"></altera:interface_mapping>
       <altera:interface_mapping altera:name="rs232_0_external_interface" altera:internal="rs232_0.external_interface" altera:type="conduit" altera:dir="end"></altera:interface_mapping>

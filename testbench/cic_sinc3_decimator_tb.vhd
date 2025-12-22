@@ -29,16 +29,18 @@ begin
   -- DUT (Entity instantiation)
   i_dut : entity work.cic_sinc3_decimator
     generic map(
+      GC_INPUT_WIDTH  => 1,             -- 1-bit input stream
       GC_DECIMATION   => 16,
       GC_OUTPUT_WIDTH => 16
     )
     port map(
-      clk      => clk,
-      reset    => reset,
-      data_in  => data_in,
-      ce       => '1',                  -- Always enabled in testbench (every cycle)
-      data_out => data_out,
-      valid    => valid
+      clk          => clk,
+      reset        => reset,
+      data_in      => data_in,
+      data_in_wide => (others => '0'),  -- Unused for 1-bit mode
+      ce           => '1',              -- Always enabled in testbench (every cycle)
+      data_out     => data_out,
+      valid        => valid
     );
 
   -- Clock generation using package procedure

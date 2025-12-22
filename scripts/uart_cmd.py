@@ -88,12 +88,15 @@ def send_command(cmd):
                 print("TDC gain set to 64x")
             elif cmd == '9':
                 print("TDC gain set to 128x")
+            elif cmd.upper() == 'M':
+                print("TDC monitor mode enabled - expecting binary packets with 0xAA 0x55 header")
+                print("Run: python tdc_monitor.py")
     except serial.SerialException as e:
         print(f"Error: {e}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in ['T', 'A', 'C', 'D', 'X', 'E', 'L', 'N', 'F', 'B', 'S', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']:
+    if len(sys.argv) != 2 or sys.argv[1] not in ['T', 'A', 'C', 'D', 'X', 'E', 'L', 'N', 'F', 'B', 'S', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'M']:
         print("Usage: python uart_cmd.py <command>")
         print("")
         print("Commands:")
@@ -116,6 +119,7 @@ if __name__ == "__main__":
         print("  9 - Set TDC gain to 128x")
         print("  E - Toggle EQ filter (on/off)")
         print("  L - Toggle LP filter (on/off)")
+        print("  M - Enable TDC monitor mode (sends TDC packets)")
 
         sys.exit(1)
     

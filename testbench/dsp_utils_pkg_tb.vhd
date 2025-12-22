@@ -1,8 +1,3 @@
--- ************************************************************************
--- DSP Utils Package Testbench
--- Tests the saturate function with various overflow/underflow conditions
--- ************************************************************************
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -29,7 +24,6 @@ begin
         while test_suite loop
 
             if run("test_saturate") then
-                -- Test: Values that fit without saturation
                 v_val_18bit := to_signed(16#1234#, 18);
                 v_val_16bit := saturate(v_val_18bit, 16);
                 check_equal(v_val_16bit, to_signed(16#1234#, 16), "Positive value should pass through");
@@ -38,7 +32,6 @@ begin
                 v_val_16bit := saturate(v_val_18bit, 16);
                 check_equal(v_val_16bit, to_signed(-4660, 16), "Negative value should pass through");
 
-                -- Test: Overflow and underflow
                 v_val_18bit := to_signed(65536, 18);
                 v_val_16bit := saturate(v_val_18bit, 16);
                 check_equal(v_val_16bit, to_signed(32767, 16), "Should saturate to max positive");
@@ -47,7 +40,6 @@ begin
                 v_val_16bit := saturate(v_val_18bit, 16);
                 check_equal(v_val_16bit, to_signed(-32768, 16), "Should saturate to max negative");
 
-                -- Test: Boundary cases
                 v_val_18bit := to_signed(32767, 18);
                 v_val_16bit := saturate(v_val_18bit, 16);
                 check_equal(v_val_16bit, to_signed(32767, 16), "Max positive should not saturate");
@@ -70,7 +62,6 @@ begin
         test_runner_cleanup(runner);
     end process;
 
-    -- Optional: Watchdog to catch infinite loops
     test_runner_watchdog(runner, 10 ms);
 
 end architecture;

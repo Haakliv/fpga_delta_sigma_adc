@@ -131,12 +131,14 @@ def capture_burst(ser: serial.Serial, fast_mode: bool = False) -> list[float]:
     
     Args:
         ser: Serial port object
-        fast_mode: If True, enable short dump mode (4096 samples) before capture
+        fast_mode: If True, enable short dump mode (4096 samples) after capture
     
     Returns:
         List of calibrated voltage measurements in millivolts
     """
     # Set dump mode explicitly using '1' (fast) or '0' (full)
+    # Note: This only affects how many samples are DUMPED, not how many are CAPTURED.
+    # Capture always fills the full 131072 sample buffer.
     if fast_mode:
         expected_samples = 4096
         print("Setting fast dump mode (4096 samples)...")
@@ -148,18 +150,29 @@ def capture_burst(ser: serial.Serial, fast_mode: bool = False) -> list[float]:
     ser.flush()
     time.sleep(0.1)
     
-    print(f"Capturing burst of {expected_samples} samples...")
-    
     # Clear any pending data
     ser.reset_input_buffer()
     
-    # Send capture command to start filling buffer, then dump
+    # Send capture command to start filling buffer
+    # Capture always fills 131072 samples regardless of dump mode
     print("Sending capture command (C)...")
     ser.write(b'C')
     ser.flush()
-    time.sleep(0.5)  # Allow FPGA to fill buffer (~0.34 seconds at 390kS/s for 131072 samples)
     
-    # FPGA auto-dumps after capture complete, so just wait for data
+    # Wait for capture to complete
+    # 131072 samples @ 97.66 ksps = ~1.34 seconds (always, regardless of dump mode)
+    wait_time = 1.5
+    print(f"Waiting {wait_time}s for capture to complete (131072 samples @ 97.66 ksps)...")
+    time.sleep(wait_time)
+    
+    print(f"Will dump {expected_samples} samples...")
+    
+    # Send dump command to start reading data
+    print("Sending dump command (D)...")
+    ser.write(b'D')
+    ser.flush()
+    
+    # FPGA dumps data after receiving D command
     print("Waiting for data dump...")
     
     samples_mv = []

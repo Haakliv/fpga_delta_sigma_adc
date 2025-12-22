@@ -46,10 +46,10 @@ set_global_assignment -name PWRMGT_VOLTAGE_OUTPUT_FORMAT "LINEAR FORMAT"
 set_global_assignment -name PWRMGT_LINEAR_FORMAT_N "-12"
 set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
 set_global_assignment -name MAX_CORE_JUNCTION_TEMP 100
+set_global_assignment -name VHDL_FILE sources/rc_adc_top.vhd
 set_global_assignment -name SDC_FILE sources/axe5000_top.sdc
 set_global_assignment -name VHDL_FILE sources/tdc_quantizer.vhd
 set_global_assignment -name VHDL_FILE sources/tdc_adc_top.vhd
-set_global_assignment -name VHDL_FILE sources/passiveless_adc_top.vhd
 set_global_assignment -name IP_FILE ip/adc_system/iopll.ip
 set_global_assignment -name QSYS_FILE adc_system.qsys
 set_global_assignment -name SDC_FILE sources/axe5000_top_late.sdc
@@ -69,41 +69,37 @@ set_global_assignment -name IP_FILE ip/adc_system/adc_system_reset_bridge_tap.ip
 set_global_assignment -name IP_FILE ip/adc_system/reset_bridge.ip
 set_global_assignment -name SIGNALTAP_FILE adc.stp
 set_global_assignment -name IP_FILE ip/adc_system/gpio_comp.ip
-set_location_assignment PIN_V6 -to ANALOG_IN -comment IOBANK_2A_T
-set_location_assignment PIN_U4 -to TEST_PIN -comment IOBANK_2A_T
+set_location_assignment PIN_V6 -to ANALOG_IN
+set_location_assignment PIN_U4 -to TEST_PIN
 set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to TEST_PIN -entity axe5000_top
-set_location_assignment PIN_AG21 -to LED1 -comment IOBANK_5A
+set_location_assignment PIN_AG21 -to LED1
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to LED1 -entity axe5000_top
 set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to LED1 -entity axe5000_top
-set_location_assignment PIN_A7 -to CLK_25M_C -comment IOBANK_3A_B
-set_location_assignment PIN_A12 -to USER_BTN -comment IOBANK_3A_B
+set_location_assignment PIN_A7 -to CLK_25M_C
+set_location_assignment PIN_A12 -to USER_BTN
 set_instance_assignment -name IO_STANDARD "1.2-V" -to USER_BTN -entity axe5000_top
 set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to USER_BTN -entity axe5000_top
 set_global_assignment -name BOARD default
 set_global_assignment -name IP_FILE ip/adc_system/reset_release.ip
-set_location_assignment PIN_AG24 -to UART_TX -comment IOBANK_5A
+set_location_assignment PIN_AG24 -to UART_TX
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_TX -entity axe5000_top
-set_instance_assignment -name SLEW_RATE 2 -to UART_TX
-set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to UART_TX
+set_instance_assignment -name SLEW_RATE 2 -to UART_TX -entity axe5000_top
+set_instance_assignment -name CURRENT_STRENGTH_NEW 9MA -to UART_TX -entity axe5000_top
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 set_global_assignment -name POWER_APPLY_THERMAL_MARGIN ADDITIONAL
-set_instance_assignment -name IO_STANDARD "1.3-V TRUE DIFFERENTIAL SIGNALING" -to "ANALOG_IN(n)" -entity axe5000_top
-set_location_assignment PIN_W5 -to "ANALOG_IN(n)" -comment IOBANK_2A_T
-set_location_assignment PIN_N6 -to FEEDBACK_OUT -comment IOBANK_2A_T
+set_location_assignment PIN_N6 -to FEEDBACK_OUT
 set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to FEEDBACK_OUT -entity axe5000_top
 set_instance_assignment -name FAST_OUTPUT_REGISTER ON -to FEEDBACK_OUT -entity axe5000_top
 set_instance_assignment -name ENABLE_BUS_HOLD_CIRCUITRY OFF -to FEEDBACK_OUT -entity axe5000_top
 set_instance_assignment -name SLEW_RATE 3 -to FEEDBACK_OUT -entity axe5000_top
-set_location_assignment PIN_V3 -to TRIGGER_IN -comment IOBANK_2A_T
-set_instance_assignment -name IO_STANDARD "1.3-V LVCMOS" -to TRIGGER_IN -entity axe5000_top
 set_global_assignment -name FLOW_ENABLE_INTERACTIVE_TIMING_ANALYZER OFF
 set_global_assignment -name IP_FILE ip/adc_system/iopll_tdc.ip
 set_global_assignment -name EDA_BOARD_DESIGN_SIGNAL_INTEGRITY_TOOL "HSPICE (Signal Integrity)"
 set_global_assignment -name EDA_OUTPUT_DATA_FORMAT HSPICE -section_id eda_board_design_signal_integrity
 set_global_assignment -name EDA_NETLIST_WRITER_OUTPUT_DIR "<output_directory>" -section_id eda_board_design_signal_integrity
-set_location_assignment PIN_AG23 -to UART_RX -comment IOBANK_5A
+set_location_assignment PIN_AG23 -to UART_RX
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to UART_RX -entity axe5000_top
-set_instance_assignment -name RECEIVER_EQUALIZATION OFF -to ANALOG_IN
+set_instance_assignment -name RECEIVER_EQUALIZATION OFF -to ANALOG_IN -entity axe5000_top
 set_global_assignment -name TIMING_ANALYZER_REPORT_NUM_WORST_CASE_TIMING_PATHS 200
 
 # --------------------------------------------------------------------------
@@ -127,5 +123,5 @@ set_instance_assignment -name MESSAGE_DISABLE 14130 -to i_uart_streamer|uart_tx_
 set_instance_assignment -name MESSAGE_DISABLE 13410 -to LED1 -entity axe5000_top
 set_instance_assignment -name MESSAGE_DISABLE 13024 -to LED1 -entity axe5000_top
 set_instance_assignment -name SLEW_RATE 3 -to TEST_PIN -entity axe5000_top
-set_location_assignment PIN_AJ24 -to VSEL_1V3 -comment IOBANK_5A
+set_location_assignment PIN_AJ24 -to VSEL_1V3
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to VSEL_1V3 -entity axe5000_top

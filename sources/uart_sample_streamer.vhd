@@ -1,49 +1,34 @@
--- ************************************************************************
--- UART Sample Streamer
--- Captures ADC samples and streams them over UART
--- Supports both ASCII hex mode (6 bytes/sample) and binary mode (2 bytes/sample)
--- Binary mode: LSB first, then MSB - no framing overhead
--- ASCII mode: 4 hex digits + CR + LF for human-readable output
--- ************************************************************************
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity uart_sample_streamer is
     generic(
-        GC_DATA_WIDTH  : positive := 16;   -- Sample data width
-        GC_BINARY_MODE : boolean  := true  -- true=binary (2 bytes), false=ASCII hex (6 bytes)
+        GC_DATA_WIDTH  : positive := 16;
+        GC_BINARY_MODE : boolean  := true
     );
     port(
-        -- Clock and reset
         clk           : in  std_logic;
         rst           : in  std_logic;
-        -- Sample input from ADC
         sample_data   : in  std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
         sample_valid  : in  std_logic;
-        -- UART transmit interface
         uart_tx_data  : out std_logic_vector(7 downto 0);
         uart_tx_valid : out std_logic;
         uart_tx_ready : in  std_logic;
-        -- Flow control
-        ready         : out std_logic := '1' -- Ready to accept new sample
+        ready         : out std_logic := '1'
     );
 end entity;
 
 architecture rtl of uart_sample_streamer is
 
-    -- ===== Sample latch =====
     signal sample_capture : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
     signal sample_staged  : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
     signal sample_latched : std_logic                                    := '0';
     signal sample_take    : std_logic                                    := '0';
 
-    -- ===== Binary mode state machine =====
     type T_BIN_STATE is (ST_BIN_IDLE, ST_BIN_SEND_LO, ST_BIN_SEND_HI);
     signal bin_state : T_BIN_STATE := ST_BIN_IDLE;
 
-    -- ===== ASCII mode state machine =====
     type   T_UART_STATE is (
         ST_UART_IDLE,
         ST_UART_SEND_N3,
@@ -58,7 +43,7 @@ architecture rtl of uart_sample_streamer is
     constant C_UART_CR : std_logic_vector(7 downto 0) := x"0D";
     constant C_UART_LF : std_logic_vector(7 downto 0) := x"0A";
 
-    -- Convert 4-bit nibble to ASCII hex character
+
     function to_hex_ascii(nibble : std_logic_vector(3 downto 0)) return std_logic_vector is
         variable v_value : integer range 0 to 15;
         variable v_ascii : std_logic_vector(7 downto 0);

@@ -1,7 +1,3 @@
--- ************************************************************************
--- Testbench for TDC Quantizer
--- ************************************************************************
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -32,7 +28,6 @@ architecture behavioral of tdc_quantizer_tb is
   signal analog_in       : std_logic                    := '0';
   signal ref_phases      : std_logic_vector(0 downto 0) := (others => '0');
   signal ref_phases_sync : std_logic_vector(2 downto 0) := (others => '0'); -- 3-FF synchronizer
-  signal time_dac_ctrl   : std_logic                    := '0';
   signal tdc_out         : signed(C_OUTPUT_WIDTH - 1 downto 0);
   signal tdc_valid       : std_logic;
   signal overflow        : std_logic;
@@ -40,15 +35,11 @@ architecture behavioral of tdc_quantizer_tb is
   signal measurement_count : integer := 0;
   signal sim_finished      : boolean := false;
 
-  -- Test stimulus
-  signal test_voltage : real := 0.0;    -- Simulated input voltage (0.0 to 1.0)
-  signal lost_sample  : std_logic;      -- Sticky overflow flag
+  signal test_voltage : real := 0.0;
+  signal lost_sample  : std_logic;
 
 begin
 
-  -- ========================================================================
-  -- Reference Synchronizer (3-FF chain for tdc_quantizer)
-  -- ========================================================================
   p_ref_sync : process(clk_tdc)
   begin
     if rising_edge(clk_tdc) then
@@ -60,37 +51,29 @@ begin
     end if;
   end process;
 
-  -- DUT
   i_dut : entity work.tdc_quantizer
     generic map(
       GC_TDL_LANES    => C_TDL_LANES,
       GC_TDL_LENGTH   => C_TDL_LENGTH,
       GC_COARSE_BITS  => C_COARSE_BITS,
-      GC_OUTPUT_WIDTH => C_OUTPUT_WIDTH,
-      GC_TIME_DAC_DEN => 256,           -- Digital Time-DAC denominator (step = 1/256)
-      GC_SIM          => true           -- Enable simulation delays
+      GC_OUTPUT_WIDTH => C_OUTPUT_WIDTH
     )
     port map(
       clk_sys                => clk_sys,
       clk_tdc                => clk_tdc,
       reset                  => reset,
       analog_in              => analog_in,
-      ref_phases(0)          => ref_phases_sync(2), -- Use synchronized reference
-      time_dac_ctrl          => time_dac_ctrl,
-      coarse_bias            => to_unsigned(9, 4), -- NOTE: Standalone test sees varying dcoarse (1 or 9) - needs timing review
-      invert_polarity        => '0',    -- Normal polarity (no inversion)
+      ref_phases(0)          => ref_phases_sync(2),
+      coarse_bias            => to_unsigned(9, 8),
+      invert_polarity        => '0',
       tdc_out                => tdc_out,
       tdc_valid              => tdc_valid,
       overflow               => overflow,
-      lost_sample            => lost_sample, -- Sticky overflow tracking
-      debug_dcoarse_raw      => open,
-      debug_dcoarse_adjusted => open,
-      debug_s_win_ok1        => open,
-      debug_s_centered       => open,
-      debug_s_ovf2           => open
+      lost_sample            => lost_sample,
+      fine_at_comp_out       => open,
+      fine_valid_out         => open
     );
 
-  -- System Clock (100 MHz)
   p_clk_sys : process
   begin
     while not sim_finished loop
@@ -192,18 +175,6 @@ begin
       -- Wait for ref to go low before next iteration
       wait until ref_phases(0) = '0';
     end loop;
-  end process;
-
-  -- Time DAC control (simple test pattern)
-  p_time_dac : process
-  begin
-    wait until reset = '0';
-    time_dac_ctrl <= '0';
-    wait for C_CLK_SYS_PERIOD * 500;
-    time_dac_ctrl <= '1';
-    wait for C_CLK_SYS_PERIOD * 500;
-    time_dac_ctrl <= '0';
-    wait;
   end process;
 
   -- Test stimulus: vary the input voltage over time

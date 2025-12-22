@@ -4,22 +4,19 @@ use ieee.numeric_std.all;
 
 entity adc_capture is
     generic(
-        GC_DATA_WIDTH : positive := 16; -- Sample data width
-        GC_DEPTH      : positive := 131072; -- Buffer depth (samples)
-        GC_ADDR_WIDTH : positive := 17  -- Address width (log2(GC_DEPTH))
+        GC_DATA_WIDTH : positive := 16;
+        GC_DEPTH      : positive := 131072;
+        GC_ADDR_WIDTH : positive := 17
     );
     port(
-        -- Clock and reset
         clk           : in  std_logic;
         rst           : in  std_logic;
-        -- Sample input from ADC
         sample_data   : in  std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
         sample_valid  : in  std_logic;
-        -- Control interface
-        start_capture : in  std_logic;  -- Start capture (one-shot)
-        start_dump    : in  std_logic;  -- Start UART dump (one-shot)
-        capture_reset : in  std_logic := '0'; -- Reset capture state (mode change)
-        short_dump    : in  std_logic := '0'; -- '1' = dump last 4096 samples only
+        start_capture : in  std_logic;
+        start_dump    : in  std_logic;
+        capture_reset : in  std_logic := '0';
+        short_dump    : in  std_logic := '0';
 
         -- Status outputs
         capturing     : out std_logic;  -- Capture in progress
@@ -37,16 +34,11 @@ end entity;
 
 architecture rtl of adc_capture is
 
-    -- ========================================================================
-    -- Inferred Block RAM
-    -- Quartus will automatically infer M10k/M20k from this array
-    -- ========================================================================
     type   T_RAM is array (0 to GC_DEPTH - 1) of std_logic_vector(GC_DATA_WIDTH - 1 downto 0);
     signal ram   : T_RAM;
 
-    -- Synthesis attributes for Intel/Altera block RAM inference
     attribute ramstyle        : string;
-    attribute ramstyle of ram : signal is "M20K"; -- Prefer M20K, falls back to M10K
+    attribute ramstyle of ram : signal is "M20K";
 
     -- ========================================================================
     -- Address and control signals
@@ -56,16 +48,15 @@ architecture rtl of adc_capture is
 
     signal wr_addr     : unsigned(GC_ADDR_WIDTH - 1 downto 0) := (others => '0');
     signal rd_addr     : unsigned(GC_ADDR_WIDTH - 1 downto 0) := (others => '0');
-    signal rd_end_addr : unsigned(GC_ADDR_WIDTH - 1 downto 0) := to_unsigned(GC_DEPTH - 1, GC_ADDR_WIDTH); -- End address for dump (default full)
+    signal rd_end_addr : unsigned(GC_ADDR_WIDTH - 1 downto 0) := to_unsigned(GC_DEPTH - 1, GC_ADDR_WIDTH);
     signal s_capturing : std_logic                            := '0';
     signal s_dumping   : std_logic                            := '0';
     signal s_full      : std_logic                            := '0';
     signal s_dump_done : std_logic                            := '0';
 
-    -- Read pipeline for block RAM (1-cycle read latency)
     signal rd_data     : std_logic_vector(GC_DATA_WIDTH - 1 downto 0) := (others => '0');
     signal rd_valid    : std_logic                                    := '0';
-    signal rd_consumed : std_logic                                    := '0'; -- Sample was consumed
+    signal rd_consumed : std_logic                                    := '0';
 
     -- Dump state machine
     type   T_DUMP_STATE is (ST_IDLE, ST_READ_REQ, ST_READ_WAIT, ST_DATA_VALID, ST_DONE);
@@ -73,16 +64,12 @@ architecture rtl of adc_capture is
 
 begin
 
-    -- Status outputs
     capturing    <= s_capturing;
     capture_done <= s_full;
     dumping      <= s_dumping;
     dump_done    <= s_dump_done;
     sample_count <= std_logic_vector(wr_addr);
 
-    -- ========================================================================
-    -- Write Side: Capture samples to RAM
-    -- ========================================================================
     p_capture : process(clk)
     begin
         if rising_edge(clk) then
@@ -91,7 +78,6 @@ begin
                 wr_addr     <= (others => '0');
                 s_full      <= '0';
             else
-                -- Mode change reset: clear capture state to prevent stale data
                 if capture_reset = '1' then
                     s_capturing <= '0';
                     wr_addr     <= (others => '0');

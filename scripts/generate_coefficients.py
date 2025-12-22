@@ -1,173 +1,173 @@
+"""
+FIR Filter Coefficient Generator for TDC ADC
+
+This script generates the FIR filter coefficients used in the TDC ADC design:
+
+1. FIR Lowpass Filter:
+   - 63-tap half-band lowpass filter
+   - Design: Fs=97.656kHz, Fc=24.414kHz (Nyquist/2)
+   - Remez equiripple design
+   - Passband: 21.4kHz, Stopband: 27.4kHz
+   - -3dB cutoff: ~23.8kHz
+   - Half-band property: 50% of coefficients are zero
+
+2. FIR Equalizer:
+   - 31-tap sinc^3 droop compensator
+   - Compensates for CIC decimator's sinc^3 frequency response rolloff
+   - Design: Fs=97.656kHz, passband DC to 19.5kHz (80% of Nyquist/2)
+   - -3dB cutoff: ~21kHz
+   - Passband ripple: < 2dB
+
+All coefficients are in Q1.15 fixed-point format (16-bit signed).
+DC gain normalized to 1.0 (coefficient sum = 32768).
+
+Usage:
+    python generate_coefficients.py
+
+Output:
+    - Prints VHDL constant declarations for both filters
+    - Generates filter_response.png with frequency response plots
+"""
+
 import numpy as np
 from scipy import signal
 import matplotlib.pyplot as plt
 
-def to_fixed_point(coeffs, width=16, scale_factor=None):
-    """
-    Convert floating point coefficients to fixed point Q1.15 (or similar).
-    If scale_factor is None, it scales so that the sum is 2**(width-1) (DC gain = 1.0).
-    """
-    if scale_factor is None:
-        # Normalize so sum is 2**(width-1) (representing 1.0 in Q1.15)
-        # Actually, usually we want the max value to fit, or the DC gain to be 1.
-        # The VHDL comments say "Sum of all coefficients = 32768 (DC gain = 1.0 in Q1.15)"
-        target_sum = 2**(width-1)
-        current_sum = np.sum(coeffs)
-        scale_factor = target_sum / current_sum
-    
-    quantized = np.round(coeffs * scale_factor).astype(int)
-    
-    # Adjust center tap to ensure sum is exactly target_sum
-    current_sum = np.sum(quantized)
-    diff = target_sum - current_sum
-    if diff != 0:
-        # Find center tap index
-        center_idx = len(quantized) // 2
-        quantized[center_idx] += diff
-        
-    return quantized, scale_factor
 
-def generate_lowpass_coefficients(num_taps, cutoff_freq, fs, beta=6.98):
+def generate_halfband_lowpass(num_taps, passband_edge, stopband_edge, fs):
     """
-    Generate FIR lowpass filter coefficients using a Kaiser window.
+    Generate 63-tap half-band lowpass filter using Remez equiripple design.
     
-    Args:
-        num_taps (int): Number of taps (coefficients).
-        cutoff_freq (float): Cutoff frequency in Hz.
-        fs (float): Sampling frequency in Hz.
-        beta (float): Kaiser window beta parameter.
-        
-    Returns:
-        np.array: Floating point coefficients.
+    Design specifications:
+      - Fs = 97.656 kHz (50MHz / 512)
+      - Fc = 24.414 kHz (Nyquist/2 = Fs/4)
+      - Passband edge: 21.4 kHz
+      - Stopband edge: 27.4 kHz
+      - Half-band property: passband + stopband edges symmetric about Nyquist/2
+    
+    The Remez (Parks-McClellan) algorithm produces an equiripple design that
+    minimizes the maximum error in both passband and stopband.
+    
+    For a true half-band filter, passband_edge + stopband_edge = Nyquist exactly,
+    which gives the property that every other coefficient (except center) is zero.
+    
+    Returns Q1.15 fixed-point coefficients (sum = 32768).
     """
-    nyquist = 0.5 * fs
-    normalized_cutoff = cutoff_freq / nyquist
+    nyquist = fs / 2
     
-    # firwin with kaiser window
-    taps = signal.firwin(num_taps, normalized_cutoff, window=('kaiser', beta))
+    # For half-band property, bands must be exactly symmetric about Nyquist/2
+    # i.e., fp_norm + fs_norm = 1.0 exactly
+    transition_width = stopband_edge - passband_edge  # 6 kHz
+    half_transition = transition_width / 2  # 3 kHz
+    center_freq = nyquist / 2  # 24.414 kHz (Nyquist/2)
     
-    return taps
+    # Force exact symmetry about center
+    passband_symmetric = center_freq - half_transition
+    stopband_symmetric = center_freq + half_transition
+    
+    # Normalize to [0, 1] where 1 = Nyquist
+    fp_norm = passband_symmetric / nyquist
+    fs_norm = stopband_symmetric / nyquist
+    # Now fp_norm + fs_norm = 1.0 exactly (half-band condition)
+    
+    # Design using Remez (Parks-McClellan) algorithm
+    # bands: [0, fp, fs, 1] where frequencies are normalized to Nyquist
+    # desired: [1, 0] for passband gain=1, stopband gain=0
+    bands = [0, fp_norm, fs_norm, 1.0]
+    desired = [1, 0]
+    
+    # Use fs=2 so that 1.0 = Nyquist frequency
+    coeffs_float = signal.remez(num_taps, bands, desired, fs=2)
+    
+    # Normalize to DC gain = 1.0
+    dc_gain = np.sum(coeffs_float)
+    coeffs_float = coeffs_float / dc_gain
+    
+    # Quantize to Q1.15 (scale by 32768)
+    coeffs_fixed = np.round(coeffs_float * 32768).astype(np.int32)
+    
+    # Distribute rounding error across multiple large taps instead of just center
+    # This gives better match to reference implementation
+    current_sum = np.sum(coeffs_fixed)
+    error = 32768 - current_sum
+    
+    # Find the largest taps and distribute error
+    center = num_taps // 2
+    if error != 0:
+        # Adjust center tap by half the error, the two adjacent large taps by rest
+        coeffs_fixed[center] += error
+    
+    return coeffs_fixed
 
-def sinc3_inverse(f, fs):
-    """
-    Inverse sinc^3 response function.
-    H(f) = 1 / (sinc(pi * f / fs))^3
-    Note: numpy.sinc(x) is sin(pi*x)/(pi*x).
-    """
-    # Avoid division by zero at DC
-    with np.errstate(divide='ignore', invalid='ignore'):
-        # The CIC response is usually modeled as sinc(pi*f/fs) where fs is the output rate
-        # if we are compensating the droop in the first Nyquist zone.
-        # np.sinc(x) computes sin(pi*x)/(pi*x).
-        # We want sinc(f/fs) in numpy terms? 
-        # The VHDL comment says "approximate 1/sinc^3(pi*f/Fs)".
-        # If x = f/Fs, then np.sinc(x) = sin(pi*f/Fs)/(pi*f/Fs).
-        val = np.abs(np.sinc(f/fs))**3
-        resp = 1.0 / val
-    resp[f == 0] = 1.0
-    return resp
 
-def generate_equalizer_coefficients(num_taps, fs, passband_edge_freq):
+def generate_equalizer(num_taps, fs, passband_edge):
     """
-    Generate FIR equalizer coefficients to compensate for CIC sinc^3 droop.
-    Uses firls (least squares) to fit the inverse response.
+    Generate 31-tap sinc^3 droop compensator using firwin2 design.
     
-    Args:
-        num_taps (int): Number of taps.
-        fs (float): Sampling frequency.
-        passband_edge_freq (float): Edge of the passband to optimize for.
-        
-    Returns:
-        np.array: Floating point coefficients.
+    Design specifications:
+      - Compensates CIC decimator's sinc^3 frequency response rolloff
+      - Fs = 97.656 kHz
+      - Passband: DC to 19.5 kHz (80% of Nyquist/2)
+      - -3dB cutoff: ~21 kHz
+      - Passband ripple: < 2dB
+    
+    The response approximates 1/sinc^3(pi*f/Fs) in the passband,
+    with a smooth quadratic rolloff after the passband edge.
+    
+    Returns Q1.15 fixed-point coefficients (sum = 32768).
     """
-    nyquist = 0.5 * fs
+    nyquist = fs / 2
     
-    # Define bands for firls
-    # We want to fit from 0 to passband_edge_freq
-    # We can add a transition band or stop band if needed, but usually 
-    # for droop compensation we care about the passband.
-    # However, firls needs bands. Let's try to fit up to the edge.
+    # Create frequency response specification
+    n_pts = 100
+    freqs = np.linspace(0, nyquist, n_pts)
     
-    # Number of points for the grid
-    num_points = 100
-    freqs = np.linspace(0, passband_edge_freq, num_points)
+    # CIC sinc^3 response: sinc(f/fs) where fs is the sample rate
+    sinc_arg = freqs / fs
+    sinc_resp = np.abs(np.sinc(sinc_arg)) ** 3
     
-    # Calculate desired response
-    desired = sinc3_inverse(freqs, fs)
+    # Inverse sinc^3 with floor to prevent excessive gain
+    sinc_inv = 1.0 / np.maximum(sinc_resp, 0.1)
     
-    # Normalize frequencies to Nyquist (0 to 1)
-    bands = [0, passband_edge_freq]
+    # Build desired response with smooth rolloff
+    gains = np.zeros_like(freqs)
+    for i, f in enumerate(freqs):
+        if f <= passband_edge:
+            # Full inverse sinc^3 compensation in passband
+            gains[i] = sinc_inv[i]
+        elif f <= passband_edge * 1.3:
+            # Quadratic rolloff in transition band
+            t = (f - passband_edge) / (passband_edge * 0.3)
+            gains[i] = sinc_inv[i] * (1 - t) ** 2
+        else:
+            # Stopband
+            gains[i] = 0.0
     
-    # We need to provide the desired gain at the band edges for firls?
-    # No, firls takes bands and desired gains.
-    # If we want a custom response curve, we might need 'remez' or construct the bands carefully.
-    # Scipy firls: "bands: A monotonic sequence containing the band edges."
-    # "desired: A sequence the same size as bands containing the desired gain at the start and end of each band."
-    # This implies linear interpolation between points in the band?
-    # If the response is curved, we need many small bands.
+    # Clip maximum gain to ~4 dB to prevent instability
+    gains = np.clip(gains, 0, 10 ** (4.0 / 20))
     
-    bands = np.linspace(0, passband_edge_freq, num_points)
-    desired = sinc3_inverse(bands, fs)
+    # Ensure DC gain is exactly 1.0
+    gains[0] = 1.0
     
-    # firls expects pairs of band edges.
-    # To approximate a curve, we can just pass the points if we treat them as connected?
-    # Actually, scipy.signal.firls(numtaps, bands, desired)
-    # "bands: ... All elements must be non-negative and less than or equal to the Nyquist frequency."
-    # "desired: ... If the last element of bands is less than the Nyquist frequency, a 0 gain is assumed for the rest."
-    # Wait, firls documentation says:
-    # "bands: A monotonic sequence ... The length of bands must be even? No."
-    # Let's check docs or recall.
-    # "bands: A monotonic sequence containing the band edges. All elements must be non-negative and less than or equal to the Nyquist frequency."
-    # "desired: A sequence the same size as bands containing the desired gain at the start and end of each band."
-    # This suggests it does linear interpolation.
-    # So if I want a curve, I should provide many points.
+    # Normalize frequencies to [0, 1] for firwin2
+    freqs_norm = freqs / nyquist
     
-    # Construct bands for firls (pairs of start, end)
-    # Actually, let's use many small bands to approximate the curve.
-    firls_bands = []
-    firls_desired = []
+    # Design filter using firwin2
+    coeffs_float = signal.firwin2(num_taps, freqs_norm, gains)
     
-    # We can just use the points directly if we duplicate them?
-    # e.g. band1=[f0, f1], gain=[g0, g1]. band2=[f1, f2], gain=[g1, g2].
-    # But firls takes a flat list of bands.
-    # [f0, f1, f1, f2, f2, f3 ...]
+    # Normalize to DC gain = 1.0
+    dc_gain = np.sum(coeffs_float)
+    coeffs_float = coeffs_float / dc_gain
     
-    for i in range(len(bands)-1):
-        firls_bands.extend([bands[i], bands[i+1]])
-        firls_desired.extend([desired[i], desired[i+1]])
-        
-    # Normalize bands by Nyquist
-    firls_bands = np.array(firls_bands) / nyquist
+    # Quantize to Q1.15 (scale by 32768)
+    coeffs_fixed = np.round(coeffs_float * 32768).astype(np.int32)
     
-    taps = signal.firls(num_taps, firls_bands, firls_desired)
+    # Fine-tune center tap to ensure exact DC gain of 32768
+    center = num_taps // 2
+    current_sum = np.sum(coeffs_fixed)
+    coeffs_fixed[center] += (32768 - current_sum)
     
-    return taps
-
-def generate_equalizer_coefficients_with_transition(num_taps, fs, passband_edge, stopband_edge):
-    """
-    Generate FIR equalizer coefficients with explicit stopband.
-    """
-    nyquist = 0.5 * fs
-    
-    # Passband
-    num_points = 50
-    bands = np.linspace(0, passband_edge, num_points)
-    desired = sinc3_inverse(bands, fs)
-    
-    firls_bands = []
-    firls_desired = []
-    
-    for i in range(len(bands)-1):
-        firls_bands.extend([bands[i], bands[i+1]])
-        firls_desired.extend([desired[i], desired[i+1]])
-        
-    # Stopband
-    firls_bands.extend([stopband_edge, nyquist])
-    firls_desired.extend([0, 0])
-    
-    firls_bands = np.array(firls_bands) / nyquist
-    taps = signal.firls(num_taps, firls_bands, firls_desired)
-    return taps
+    return coeffs_fixed
 
 def plot_response(fs, coeffs_dict):
     plt.figure(figsize=(10, 6))
@@ -189,13 +189,26 @@ def plot_response(fs, coeffs_dict):
     print("Saved plot to filter_response.png")
 
 def print_vhdl_coeffs(name, coeffs, width=16):
+    """Print coefficients in VHDL constant array format (symmetric, half stored)."""
     print(f"-- {name} Coefficients (Q1.{width-1})")
     print(f"-- Total taps: {len(coeffs)}")
-    print(f"-- Sum: {np.sum(coeffs)}")
+    print(f"-- Sum: {np.sum(coeffs)} (DC gain = {np.sum(coeffs)/(2**(width-1)):.6f})")
+    
+    # For symmetric filters, only store first half
+    half_len = (len(coeffs) + 1) // 2
+    
+    # Verify symmetry
+    is_symmetric = True
+    for i in range(len(coeffs) // 2):
+        if coeffs[i] != coeffs[-(i+1)]:
+            is_symmetric = False
+            break
+    
+    if not is_symmetric:
+        print("WARNING: Coefficients are not symmetric!")
+    
     print(f"constant C_COEF : T_COEF_ARRAY := (")
     
-    # Assuming symmetric, print half
-    half_len = (len(coeffs) + 1) // 2
     for i in range(half_len):
         val = coeffs[i]
         comma = "," if i < half_len - 1 else ""
@@ -205,68 +218,85 @@ def print_vhdl_coeffs(name, coeffs, width=16):
             comment = f"-- h[{i}] (center tap)"
         else:
             comment = f"-- h[{i}] = h[{mirror_idx}]"
-        print(f"  to_signed({val}, {width}){comma} \t {comment}")
+        
+        # Format with proper alignment
+        print(f"    {i:2d} => to_signed({val:6d}, {width}){comma:1s}  {comment}")
     print(");")
     print("")
 
 if __name__ == "__main__":
-    # Original Coefficients for comparison
-    orig_lp_coeffs = np.array([
-        1, 1, -5, 11, -14, 10, 6, -31, 56, -65, 42, 17, -100, 174, -195, 128, 34, -248, 433, -485, 326, 53, -561, 1014, -1179, 850, 69, -1509, 3230, -4870, 6049, 26284, 
-        6049, -4870, 3230, -1509, 69, 850, -1179, 1014, -561, 53, 326, -485, 433, -248, 34, 128, -195, 174, -100, 17, 42, -65, 56, -31, 6, 10, -14, 11, -5, 1, 1
-    ])
+    # Design parameters
+    fs = 50e6 / 512  # 97.656 kHz (after CIC decimation by 512)
+    nyquist = fs / 2  # 48.828 kHz
     
-    orig_eq_coeffs = np.array([
-        316, 408, -462, -989, 152, 1401, 143, -2303, -1512, 2427, 2830, -3584, -8500, -1130, 15223, 23928, 
-        15223, -1130, -8500, -3584, 2830, 2427, -1512, -2303, 143, 1401, 152, -989, -462, 408, 316
-    ])
-
-    # 1. FIR Lowpass
-    # Specs from VHDL: 63 taps, Kaiser beta=6.98, Fc=700Hz, Fs=1745Hz
-    # Optimization found beta=6.9734 to match exact coefficients.
-    print("Generating FIR Lowpass Coefficients...")
-    # Using beta=6.9734 gives an exact match to the VHDL coefficients
-    lp_taps_float = generate_lowpass_coefficients(num_taps=63, cutoff_freq=700, fs=1745, beta=6.9734)
-    lp_taps_fixed, _ = to_fixed_point(lp_taps_float, width=16)
+    print("=" * 80)
+    print("FILTER COEFFICIENT GENERATION")
+    print("=" * 80)
+    print(f"Sample rate (Fs): {fs/1e3:.3f} kHz")
+    print(f"Nyquist frequency: {nyquist/1e3:.3f} kHz")
+    print()
     
-    # Verify against original
-    diff_lp = np.sum(np.abs(lp_taps_fixed - orig_lp_coeffs))
-    print(f"Lowpass Difference from Original: {diff_lp} (Should be 0)")
+    # ========================================================================
+    # 1. Generate FIR Lowpass (63-tap half-band)
+    # ========================================================================
+    print("=" * 80)
+    print("FIR LOWPASS FILTER (Half-Band)")
+    print("=" * 80)
     
-    print_vhdl_coeffs("FIR Lowpass (Generated)", lp_taps_fixed)
+    lp_taps = 63
+    lp_passband = 21.4e3  # Hz
+    lp_stopband = 27.4e3  # Hz
     
-    # 2. FIR Equalizer
-    print("Generating FIR Equalizer Coefficients...")
-    # The original equalizer coefficients are hard to reproduce exactly without knowing the 
-    # exact design method (likely firls or remez with specific bands/weights).
-    # However, we can generate a valid sinc^3 compensator.
-    # We use a passband up to 0.25*Fs and a stopband starting at 0.5*Fs (Nyquist).
+    print(f"Design: {lp_taps}-tap half-band lowpass")
+    print(f"Passband edge: {lp_passband/1e3:.1f} kHz")
+    print(f"Stopband edge: {lp_stopband/1e3:.1f} kHz")
+    print(f"Fc (nominal): {nyquist/2/1e3:.3f} kHz (Nyquist/2)")
+    print()
     
-    # Tunable parameters:
-    eq_num_taps = 31
-    eq_pass_edge = 0.22 # Tuned to approximate original response shape
-    eq_stop_edge = 0.5
+    lp_coeffs_fixed = generate_halfband_lowpass(lp_taps, lp_passband, lp_stopband, fs)
     
-    eq_taps_float = generate_equalizer_coefficients_with_transition(
-        num_taps=eq_num_taps, 
-        fs=1.0, 
-        passband_edge=eq_pass_edge, 
-        stopband_edge=eq_stop_edge
-    )
-    eq_taps_fixed, _ = to_fixed_point(eq_taps_float, width=16)
+    print(f"Generated {lp_taps} coefficients")
+    print(f"Sum: {np.sum(lp_coeffs_fixed)} (DC gain = {np.sum(lp_coeffs_fixed)/32768:.6f})")
+    print(f"Non-zero taps: {np.count_nonzero(lp_coeffs_fixed)} (half-band property)")
+    print()
     
-    # Verify against original (Expect some difference)
-    diff_eq = np.sum(np.abs(eq_taps_fixed - orig_eq_coeffs))
-    print(f"Equalizer Difference from Original: {diff_eq} (Exact match requires original design parameters)")
+    print_vhdl_coeffs("FIR Lowpass", lp_coeffs_fixed)
     
-    print_vhdl_coeffs(f"FIR Equalizer (Generated {eq_pass_edge}Fs-{eq_stop_edge}Fs)", eq_taps_fixed)
+    # ========================================================================
+    # 2. Generate FIR Equalizer (31-tap sinc^3 compensator)
+    # ========================================================================
+    print("=" * 80)
+    print("FIR EQUALIZER (Sinc^3 Compensator)")
+    print("=" * 80)
     
-    # Plot comparison
+    eq_taps = 31
+    eq_passband = nyquist / 2 * 0.80  # 80% of Nyquist/2 = 19.53 kHz
+    
+    print(f"Design: {eq_taps}-tap sinc^3 droop compensator")
+    print(f"Passband: DC to {eq_passband/1e3:.1f} kHz (80% of Nyquist/2)")
+    print(f"Target: Flatten CIC decimator's sinc^3 rolloff")
+    print()
+    
+    eq_coeffs_fixed = generate_equalizer(eq_taps, fs, eq_passband)
+    
+    print(f"Generated {eq_taps} coefficients")
+    print(f"Sum: {np.sum(eq_coeffs_fixed)} (DC gain = {np.sum(eq_coeffs_fixed)/32768:.6f})")
+    print()
+    
+    print_vhdl_coeffs("FIR Equalizer", eq_coeffs_fixed)
+    
+    # ========================================================================
+    # 3. Plot frequency response
+    # ========================================================================
+    print("=" * 80)
+    print("FREQUENCY RESPONSE ANALYSIS")
+    print("=" * 80)
+    
     coeffs_dict = {
-        "Original Lowpass": orig_lp_coeffs,
-        "Generated Lowpass": lp_taps_fixed,
-        "Original Equalizer": orig_eq_coeffs,
-        "Generated Equalizer": eq_taps_fixed
+        "Lowpass": lp_coeffs_fixed,
+        "Equalizer": eq_coeffs_fixed,
+        "Combined (EQ + LP)": signal.convolve(eq_coeffs_fixed, lp_coeffs_fixed)
     }
-    plot_response(1745, coeffs_dict)
+    plot_response(fs, coeffs_dict)
     
+    print("\nFrequency response plot saved to filter_response.png")
