@@ -23,6 +23,9 @@ set_false_path -to [get_ports {TEST_PIN}]
 set_false_path -from [get_ports {ANALOG_IN}]
 set_false_path -to [get_ports {FEEDBACK_OUT}]
 
+# TDC calibration done is a static status signal once calibration completes
+set_false_path -from [get_registers {*i_tdc|calib_done}] -to [get_registers {*i_tdc|adj0_s1[*]*}]
+
 # ---------- I/O Constraints ----------
 # UART (async serial interface)
 set_input_delay -clock [get_clocks VCLK_UART] -max 0.0 -source_latency_included [get_ports {UART_RX}]

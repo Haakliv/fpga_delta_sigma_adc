@@ -55,9 +55,9 @@ architecture rtl of axe5000_top is
   -- signal short_dump_mode : std_logic := '0';
 
   -- UART mux signals (live vs dump mode)
-  -- signal streamer_data  : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
-  -- signal streamer_valid : std_logic;
-  -- signal streamer_ready : std_logic;
+  signal streamer_data  : std_logic_vector(C_ADC_DATA_WIDTH - 1 downto 0);
+  signal streamer_valid : std_logic;
+  signal streamer_ready : std_logic;
 
   -- Burst done extra newline signals
   -- signal dump_done      : std_logic;
@@ -65,9 +65,9 @@ architecture rtl of axe5000_top is
   -- signal extra_lf_state : unsigned(1 downto 0) := "00"; -- 0=idle, 1=send LF, 2=wait
 
   -- UART output mux (streamer vs extra LF)
-  -- signal streamer_tx_data  : std_logic_vector(7 downto 0);
-  -- signal streamer_tx_valid : std_logic;
-  -- signal streamer_tx_ready : std_logic;
+  signal streamer_tx_data  : std_logic_vector(7 downto 0);
+  signal streamer_tx_valid : std_logic;
+  signal streamer_tx_ready : std_logic;
 
   -- Runtime control
   signal disable_tdc_contrib : std_logic := '0';
@@ -141,67 +141,67 @@ begin
 
   rst <= not rst_n_from_pd;
 
-  i_adc : entity work.tdc_adc_top
-    generic map(
-      GC_DECIMATION => GC_ADC_DECIMATION,
-      GC_DATA_WIDTH => C_ADC_DATA_WIDTH,
-      GC_TDC_OUTPUT => 16,
-      GC_SIM        => false,
-      GC_FAST_SIM   => false,
-      GC_OPEN_LOOP  => false            -- Normal closed-loop operation
-    )
-    port map(
-      clk_sys             => sysclk_pd,
-      clk_tdc             => clk_tdc,
-      reset               => rst,
-      -- Reference clock
-      ref_clock           => clk_dsm,
-      -- Comparator input from differential GPIO
-      comparator_in       => s_comparator_out(0),
-      -- DAC output to external pin (1k + 1nF RC filter, shorted to ANALOG_IN_N)
-      dac_out_bit         => w_dac_bit,
-      -- Optional trigger input (always enabled for ADC sampling)
-      trigger_enable      => '1',
-      -- Open-loop test mode (not used in production)
-      open_loop_dac_duty  => '0',
-      -- Sample output
-      sample_data         => adc_sample_data,
-      sample_valid        => adc_sample_valid,
-      -- Debug outputs (not monitored in production)
-      debug_tdc_out       => open,
-      debug_tdc_valid     => open,
-      -- TDC Monitor outputs (for TDC sanity check/debug)
-      tdc_monitor_code    => open,
-      tdc_monitor_center  => open,
-      tdc_monitor_diff    => open,
-      tdc_monitor_dac     => open,
-      tdc_monitor_valid   => open,
-      -- Runtime control
-      disable_tdc_contrib => disable_tdc_contrib,
-      negate_tdc_contrib  => negate_tdc_contrib,
-      tdc_scale_shift     => "000",
-      disable_eq_filter   => disable_eq_filter,
-      disable_lp_filter   => disable_lp_filter,
-      -- Status
-      adc_ready           => open
-    );
-
-  -- i_adc : entity work.rc_adc_top
+  -- i_adc : entity work.tdc_adc_top
   --   generic map(
   --     GC_DECIMATION => GC_ADC_DECIMATION,
-  --     GC_DATA_WIDTH => C_ADC_DATA_WIDTH
+  --     GC_DATA_WIDTH => C_ADC_DATA_WIDTH,
+  --     GC_TDC_OUTPUT => 16,
+  --     GC_SIM        => false,
+  --     GC_FAST_SIM   => false,
+  --     GC_OPEN_LOOP  => false            -- Normal closed-loop operation
   --   )
   --   port map(
-  --     clk            => clk_dsm,        -- 50 MHz sampling clock
-  --     clk_fast       => clk_tdc,        -- 400 MHz fast clock
-  --     clk_sys        => sysclk_pd,      -- 100 MHz system clock
-  --     reset          => rst,
-  --     analog_in      => s_comparator_out(0),
-  --     dac_out        => w_dac_bit,
-  --     trigger_enable => '1',
-  --     sample_data    => adc_sample_data,
-  --     sample_valid   => adc_sample_valid
+  --     clk_sys             => sysclk_pd,
+  --     clk_tdc             => clk_tdc,
+  --     reset               => rst,
+  --     -- Reference clock
+  --     ref_clock           => clk_dsm,
+  --     -- Comparator input from differential GPIO
+  --     comparator_in       => s_comparator_out(0),
+  --     -- DAC output to external pin (1k + 1nF RC filter, shorted to ANALOG_IN_N)
+  --     dac_out_bit         => w_dac_bit,
+  --     -- Optional trigger input (always enabled for ADC sampling)
+  --     trigger_enable      => '1',
+  --     -- Open-loop test mode (not used in production)
+  --     open_loop_dac_duty  => '0',
+  --     -- Sample output
+  --     sample_data         => adc_sample_data,
+  --     sample_valid        => adc_sample_valid,
+  --     -- Debug outputs (not monitored in production)
+  --     debug_tdc_out       => open,
+  --     debug_tdc_valid     => open,
+  --     -- TDC Monitor outputs (for TDC sanity check/debug)
+  --     tdc_monitor_code    => open,
+  --     tdc_monitor_center  => open,
+  --     tdc_monitor_diff    => open,
+  --     tdc_monitor_dac     => open,
+  --     tdc_monitor_valid   => open,
+  --     -- Runtime control
+  --     disable_tdc_contrib => disable_tdc_contrib,
+  --     negate_tdc_contrib  => negate_tdc_contrib,
+  --     tdc_scale_shift     => "000",
+  --     disable_eq_filter   => disable_eq_filter,
+  --     disable_lp_filter   => disable_lp_filter,
+  --     -- Status
+  --     adc_ready           => open
   --   );
+
+  i_adc : entity work.rc_adc_top
+    generic map(
+      GC_DECIMATION => GC_ADC_DECIMATION,
+      GC_DATA_WIDTH => C_ADC_DATA_WIDTH
+    )
+    port map(
+      clk            => clk_dsm,        -- 50 MHz sampling clock
+      clk_fast       => clk_tdc,        -- 400 MHz fast clock
+      clk_sys        => sysclk_pd,      -- 100 MHz system clock
+      reset          => rst,
+      analog_in      => s_comparator_out(0),
+      dac_out        => w_dac_bit,
+      trigger_enable => '1',
+      sample_data    => adc_sample_data,
+      sample_valid   => adc_sample_valid
+    );
 
   -- p_trigger_sync : process(sysclk_pd)
   -- begin
@@ -337,6 +337,9 @@ begin
   --   dump_ready     <= streamer_ready when dump_active = '1' else '0';
   -- end generate;
 
+  streamer_data  <= adc_sample_data;
+  streamer_valid <= adc_sample_valid;
+
   -- p_extra_newline : process(sysclk_pd)
   -- begin
   --   if rising_edge(sysclk_pd) then
@@ -370,27 +373,31 @@ begin
   --   end if;
   -- end process;
 
-  -- i_uart_streamer : entity work.uart_sample_streamer
-  --   generic map(
-  --     GC_DATA_WIDTH  => C_ADC_DATA_WIDTH,
-  --     GC_BINARY_MODE => GC_UART_BINARY
-  --   )
-  --   port map(
-  --     clk           => sysclk_pd,
-  --     rst           => rst,
-  --     sample_data   => streamer_data,
-  --     sample_valid  => streamer_valid,
-  --     uart_tx_data  => streamer_tx_data,
-  --     uart_tx_valid => streamer_tx_valid,
-  --     uart_tx_ready => streamer_tx_ready,
-  --     ready         => streamer_ready
-  --   );
+  i_uart_streamer : entity work.uart_sample_streamer
+    generic map(
+      GC_DATA_WIDTH  => C_ADC_DATA_WIDTH,
+      GC_BINARY_MODE => GC_UART_BINARY
+    )
+    port map(
+      clk           => sysclk_pd,
+      rst           => rst,
+      sample_data   => streamer_data,
+      sample_valid  => streamer_valid,
+      uart_tx_data  => streamer_tx_data,
+      uart_tx_valid => streamer_tx_valid,
+      uart_tx_ready => streamer_tx_ready,
+      ready         => streamer_ready
+    );
+
+  uart_tx_data      <= streamer_tx_data;
+  uart_tx_valid     <= streamer_tx_valid;
+  streamer_tx_ready <= uart_tx_ready;
 
   -- uart_tx_data      <= x"0A" when send_extra_lf = '1' else streamer_tx_data;
   -- uart_tx_valid     <= '1' when send_extra_lf = '1' else streamer_tx_valid;
   -- streamer_tx_ready <= uart_tx_ready when send_extra_lf = '0' else '0';
 
-  uart_tx_data  <= (others => '0');
-  uart_tx_valid <= '0';
+  -- uart_tx_data  <= (others => '0');
+  -- uart_tx_valid <= '0';
 
 end architecture rtl;
