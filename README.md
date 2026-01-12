@@ -18,7 +18,7 @@ There are two available architecture variants:
 - **Resolution**: 16-bit signed output (Q15 format)
 - **Effective Number of Bits (ENOB)**: 9.7 bits
 - **Sample Rate**: ~97.7 kSPS (50 MHz / 512 Decimation)
-- **Input Voltage Range**: 0.1V - 1.3V
+- **Input Voltage Range**: 0.2V - 1.3V
 - **Tools Used**: Intel Quartus Prime Pro 25.3, Platform Designer
 
 ## Project Structure
